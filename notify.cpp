@@ -98,8 +98,8 @@ time_t nextSendTime() {
 String formatTime(time_t value) {
   struct tm local;
   localtime_r(&value, &local);
-  char buf[24];
-  strftime(buf, sizeof(buf), "%m/%d %H:%M", &local);
+  char buf[32];
+  strftime(buf, sizeof(buf), "%Y/%m/%d %H:%M", &local);
   return String(buf);
 }
 

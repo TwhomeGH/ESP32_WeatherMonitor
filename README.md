@@ -27,6 +27,7 @@
   會先產生 Web 資產再編譯上傳，並自動使用 Arduino IDE 內建的 arduino-cli（開發板取自 `sketch.yaml`、序列埠自動偵測）。只想編譯用 `--compile-only`。
 
 - 修改 `web/` 內資源或 `.md` 文件後，需重新產生 `docs_assets.h`：`tools/flash.cjs` 會自動處理，或執行 `node tools/generate-web-assets.cjs`。
+- **VS Code IntelliSense**：先執行一次 `node tools/flash.cjs --compile-only`，會產生 `build/compile_commands.json`；`.vscode/` 已設好指向它，標頭檔（如 `WebServer.h`）即可被正確解析。
 
 ## 文件
 

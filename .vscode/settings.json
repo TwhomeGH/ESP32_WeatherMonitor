@@ -1,0 +1,6 @@
+{
+  "files.associations": { "*.ino": "cpp" },
+  "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
+  "C_Cpp.default.cStandard": "c11",
+  "C_Cpp.default.cppStandard": "gnu++17"
+}

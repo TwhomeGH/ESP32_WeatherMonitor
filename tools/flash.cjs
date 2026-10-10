@@ -116,11 +116,25 @@ if (opts.upload) info('開發板：' + fqbn + '，序列埠：' + port);
 else info('開發板：' + fqbn + '（僅編譯，不上傳）');
 
 // ---- 6. 編譯／上傳 ----
-const args = [...configArgs, 'compile', '--fqbn', fqbn];
+// 建置目錄放在使用者家目錄下的 ASCII 路徑：ESP32 工具鏈對非 ASCII 路徑（例如專案中的
+// 中文資料夾）在連結階段會失敗，故不放專案內。編譯後再把 compile_commands.json 複製到
+// 專案 build/，供 VS Code IntelliSense 使用（build/ 已列於 .gitignore）。
+const buildPath = path.join(os.homedir(), '.arduino-build', path.basename(root));
+fs.mkdirSync(buildPath, { recursive: true });
+const args = [...configArgs, 'compile', '--fqbn', fqbn, '--build-path', buildPath];
 if (opts.upload) args.push('-p', port, '--upload');
 args.push(...opts.passthrough, root);
 
 info((opts.upload ? '編譯並上傳' : '編譯') + '中…');
 const run = spawnSync(cli, args, { stdio: 'inherit' });
 if (run.error) fail('無法執行 arduino-cli：' + run.error.message);
+// 匯出 IntelliSense 用的編譯命令（讓 VS Code 找到 WebServer.h 等標頭）。
+try {
+  const commands = path.join(buildPath, 'compile_commands.json');
+  if (fs.existsSync(commands)) {
+    fs.mkdirSync(path.join(root, 'build'), { recursive: true });
+    fs.copyFileSync(commands, path.join(root, 'build', 'compile_commands.json'));
+    info('已更新 build/compile_commands.json（VS Code IntelliSense 用）。');
+  }
+} catch (e) { info('略過 compile_commands.json 匯出：' + e.message); }
 process.exit(run.status === null ? 1 : run.status);
