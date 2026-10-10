@@ -86,6 +86,12 @@ button:disabled { background: #334155; color: #94a3b8; cursor: not-allowed; }
 
 <section class="grid">
   <div class="card wide">
+    <h2>裝置管理密碼</h2>
+    <label>密碼<input id="adminPassword" type="password" autocomplete="off"></label>
+    <p class="muted">這是本裝置專用的管理密碼，用來授權下方所有設定變更——<strong>不是你的 Wi-Fi 密碼，也不是路由器密碼</strong>。它由裝置自動產生，於每次開機印在序列監控視窗（鮑率 115200），同時也是備援熱點「ESP32-Setup-…」的連線密碼。請在信任的本地網路設定，此頁輸入一次即可。</p>
+  </div>
+
+  <div class="card wide">
     <h2>ntfy 手動測試通知</h2>
     <p class="muted">伺服器：https://ntfy.sh · 由 ESP32 發送。正式期貨提醒仍在規劃中。</p>
     <p id="ntfyStatus" role="status">正在讀取通知狀態…</p>
@@ -95,7 +101,6 @@ button:disabled { background: #334155; color: #94a3b8; cursor: not-allowed; }
       <label>存取權杖（選填）<input id="ntfyToken" type="password" maxlength="256" autocomplete="new-password"></label>
       <p id="ntfyTokenState" class="muted">留空保留已儲存的權杖。</p>
       <label><input id="ntfyClearToken" type="checkbox" style="width:auto"> 清除已儲存權杖</label>
-      <label>裝置管理密碼<input id="ntfyAdmin" type="password" required autocomplete="off"></label>
       <button id="ntfySave" type="submit">儲存通知設定</button>
       <button id="ntfyTest" type="button" disabled>發送測試通知</button>
     </form>
@@ -110,8 +115,6 @@ button:disabled { background: #334155; color: #94a3b8; cursor: not-allowed; }
       <label>目標 Wi-Fi 名稱（SSID）<input id="wifiSsid" required maxlength="32" autocomplete="off"></label>
       <label>目標 Wi-Fi 密碼<input id="wifiPassword" type="password" maxlength="64" autocomplete="new-password"></label>
       <p class="muted">請輸入完整新密碼；留空代表開放網路，並非保留原密碼。支援 2.4 GHz Wi-Fi。</p>
-      <label>裝置管理密碼<input id="wifiAdmin" type="password" required autocomplete="off"></label>
-      <p class="muted">管理密碼顯示於序列監控視窗（115200，重新啟動時印出），亦為備援熱點密碼。請在信任的本地網路設定。</p>
       <button id="wifiSave" type="submit" disabled>測試並儲存 Wi-Fi</button>
     </form>
     <p id="wifiResult" role="status"></p>
@@ -131,7 +134,6 @@ button:disabled { background: #334155; color: #94a3b8; cursor: not-allowed; }
       <label>地區名稱<input id="locationName" required maxlength="32"></label>
       <label>緯度<input id="latitude" type="number" required min="-90" max="90" step="any"></label>
       <label>經度<input id="longitude" type="number" required min="-180" max="180" step="any"></label>
-      <label>裝置管理密碼<input id="locationAdmin" type="password" required autocomplete="off"></label>
       <button id="locationSave" type="submit">儲存共用地區</button>
     </form>
     <p id="locationResult" role="status"></p>

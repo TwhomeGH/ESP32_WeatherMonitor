@@ -31,6 +31,8 @@ async function refreshWiFi() {
 }
 el('wifiForm').addEventListener('submit', async event => {
   event.preventDefault();
+  const admin = el('adminPassword').value;
+  if (!admin) { el('wifiResult').textContent = '請先在最上方輸入裝置管理密碼。'; return; }
   if (wifiSubmitting) return;
   wifiSubmitting = true;
   el('wifiSave').disabled = true;
@@ -38,11 +40,11 @@ el('wifiForm').addEventListener('submit', async event => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10000);
   try {
-    const body = new URLSearchParams({ssid:el('wifiSsid').value,password:el('wifiPassword').value,admin:el('wifiAdmin').value});
+    const body = new URLSearchParams({ssid:el('wifiSsid').value,password:el('wifiPassword').value,admin});
     const res = await fetch('/api/wifi', {method:'POST',body,signal:controller.signal});
     const result = await res.text();
     el('wifiResult').textContent = result;
-    if (res.ok) { el('wifiPassword').value = ''; el('wifiAdmin').value = ''; }
+    if (res.ok) el('wifiPassword').value = '';
   } catch (e) {
     el('wifiResult').textContent = '未收到回應，設定可能已送達。請先連接備援熱點查看結果，勿立即重送。';
   } finally { clearTimeout(timer); wifiSubmitting = false; el('wifiSave').disabled = false; }
@@ -101,13 +103,14 @@ el('locationSearchForm').addEventListener('submit', async event => {
 
 el('locationForm').addEventListener('submit', async event => {
   event.preventDefault();
+  const admin = el('adminPassword').value;
+  if (!admin) { el('locationResult').textContent = '請先在最上方輸入裝置管理密碼。'; return; }
   const next = {name:el('locationName').value.trim(),latitude:Number(el('latitude').value),longitude:Number(el('longitude').value)};
   if (!el('latitude').value.trim() || !el('longitude').value.trim() || !validLocation(next)) { el('locationResult').textContent = '請輸入有效地區名稱與經緯度。'; return; }
   el('locationSave').disabled = true;
   try {
-    const response = await fetchTimed('/api/weather-location', {method:'POST',body:new URLSearchParams({...next,admin:el('locationAdmin').value})});
+    const response = await fetchTimed('/api/weather-location', {method:'POST',body:new URLSearchParams({...next,admin})});
     el('locationResult').textContent = await response.text();
-    if (response.ok) el('locationAdmin').value = '';
   } catch (error) { el('locationResult').textContent = '未收到回應；請查看上方 ESP32 共用地區，確認是否已儲存。'; }
   finally { el('locationSave').disabled = false; }
 });
@@ -142,12 +145,14 @@ async function refreshNtfy() {
 }
 el('ntfyForm').addEventListener('submit', async event => {
   event.preventDefault();
+  const admin = el('adminPassword').value;
+  if (!admin) { el('ntfyResult').textContent = '請先在最上方輸入裝置管理密碼。'; return; }
   if (ntfySubmitting || ntfyBusy) return;
   ntfySubmitting = true; updateNtfyButtons();
   try {
     const response = await fetchTimed('/api/ntfy', {method:'POST',body:new URLSearchParams({
       topic:el('ntfyTopic').value,token:el('ntfyToken').value,
-      clearToken:String(el('ntfyClearToken').checked),admin:el('ntfyAdmin').value})});
+      clearToken:String(el('ntfyClearToken').checked),admin})});
     el('ntfyResult').textContent = await response.text();
     if (response.ok) {
       ntfySavedTopic = el('ntfyTopic').value;
@@ -158,12 +163,13 @@ el('ntfyForm').addEventListener('submit', async event => {
 });
 el('ntfyTest').addEventListener('click', async () => {
   if (el('ntfyTest').disabled) return;
-  if (!el('ntfyAdmin').value) { el('ntfyResult').textContent = '請輸入裝置管理密碼。'; return; }
+  const admin = el('adminPassword').value;
+  if (!admin) { el('ntfyResult').textContent = '請先在最上方輸入裝置管理密碼。'; return; }
   ntfySubmitting = true; updateNtfyButtons();
   try {
-    const response = await fetchTimed('/api/ntfy/test', {method:'POST',body:new URLSearchParams({admin:el('ntfyAdmin').value})});
+    const response = await fetchTimed('/api/ntfy/test', {method:'POST',body:new URLSearchParams({admin})});
     el('ntfyResult').textContent = await response.text();
-    if (response.ok) { ntfyBusy = true; el('ntfyAdmin').value = ''; }
+    if (response.ok) ntfyBusy = true;
   } catch (error) {
     el('ntfyResult').textContent = '未收到回應，測試可能已送達；請先查看手機，不會自動重送。';
   } finally { ntfySubmitting = false; updateNtfyButtons(); }
