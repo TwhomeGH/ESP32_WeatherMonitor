@@ -6,8 +6,8 @@
 
 - 設計文件：[`NOTIFY_PLAN.md`](NOTIFY_PLAN.md)；期貨交易日細節另見 [`FUTURES_PLAN.md`](FUTURES_PLAN.md)。
 - 已決定：天氣與期貨**共用一個 ntfy 主題**；「每 N 小時」預設整點對齊、可另設起點。
-- **待確認**：每種排程是否多組、「跟隨期貨」時天氣與期貨要合併或分送、補送／重試策略；到期契約（見 FUTURES_PLAN）。
-- **待實作**：`schedule`／`market_calendar`／`weather_fetch`／`notifier` 模組、設定頁通知 UI、`/api/notify/schedule`。
+- **已完成**：天氣抓取（`weather`）＋天氣通知排程（`notify`：每 N 小時／每天／每週）＋手動發送；設定頁「天氣播報通知」卡片。
+- **待實作**：期貨開/收盤排程（`market_calendar`）、「跟隨期貨」觸發、每種排程多組、補送／重試策略、到期契約（見 FUTURES_PLAN）。
 
 ## OTA 熱更新（選配）
 

@@ -203,3 +203,11 @@ void serviceWiFiManager() {
     } else message = "Wi-Fi 連線失敗，備援熱點可設定；將持續重試已儲存的網路";
   } else if (!connecting && hasCredentials && now - started >= RETRY_INTERVAL) connectTo(saved);
 }
+
+
+bool getWeatherLocation(double& latitude, double& longitude, String& name) {
+  latitude = weatherLocation.latitude;
+  longitude = weatherLocation.longitude;
+  name = weatherLocation.name;
+  return name.length() > 0;
+}

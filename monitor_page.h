@@ -152,6 +152,12 @@ html { color-scheme: dark; }
     <a class="btn" href="/settings">變更 Wi-Fi／天氣地區設定 →</a>
   </div>
   <div class="card wide">
+    <h2>自動排程</h2>
+    <p id="scheduleWeather" class="muted">讀取中…</p>
+    <p id="scheduleFutures" class="muted">期貨開／收盤提醒：尚未啟用（規劃中）。</p>
+    <a href="/settings" style="color:#7dd3fc">設定排程 →</a>
+  </div>
+  <div class="card wide">
     <h2 id="weatherTitle">網路天氣</h2>
     <div class="value" id="weatherSummary">讀取中…</div>
     <p class="muted" id="weatherStatus" role="status">正在取得天氣資料</p>
@@ -253,6 +259,20 @@ async function refreshWiFi() {
   } finally { clearTimeout(timer); setTimeout(refreshWiFi, 3000); }
 }
 refreshWiFi();
+
+async function refreshSchedule() {
+  try {
+    const res = await fetch('/api/notify/weather', {cache:'no-store'});
+    if (!res.ok) throw Error('schedule unavailable');
+    const d = await res.json();
+    let text = d.enabled ? (d.nextText ? '下一次 ' + d.nextText : '已啟用（等待網路校時）') : '未啟用';
+    if (d.enabled && !d.configured) text += '（尚未設定 ntfy 主題）';
+    el('scheduleWeather').textContent = '天氣通知：' + text;
+  } catch (e) {
+    el('scheduleWeather').textContent = '天氣通知：無法取得排程資訊。';
+  } finally { setTimeout(refreshSchedule, 10000); }
+}
+refreshSchedule();
 
 function uptime(seconds) {
   const d = Math.floor(seconds / 86400);

@@ -235,3 +235,96 @@ el('ntfyTest').addEventListener('click', async () => {
   } finally { ntfySubmitting = false; updateNtfyButtons(); }
 });
 refreshNtfy();
+
+let weatherNotifyInitialized = false, weatherNotifyBusy = false;
+function weatherModeSections() {
+  const mode = el('weatherMode').value;
+  el('weatherInterval').hidden = mode !== '0';
+  el('weatherDaily').hidden = mode !== '1';
+  el('weatherWeekly').hidden = mode !== '2';
+}
+el('weatherMode').addEventListener('change', weatherModeSections);
+function splitTime(value) { const parts = (value || '00:00').split(':'); return { hour: Number(parts[0]), minute: Number(parts[1]) }; }
+function joinTime(hour, minute) { return String(hour).padStart(2, '0') + ':' + String(minute).padStart(2, '0'); }
+function readWeekdays() { let mask = 0; document.querySelectorAll('.wd').forEach(c => { if (c.checked) mask |= 1 << Number(c.value); }); return mask; }
+function writeWeekdays(mask) { document.querySelectorAll('.wd').forEach(c => { c.checked = !!(mask & (1 << Number(c.value))); }); }
+function setWeatherNotifyState(state, text) { const s = el('weatherNotifyResult'); s.className = state; s.textContent = text || ''; }
+function humanizeDuration(secs) {
+  const days = Math.floor(secs / 86400), hours = Math.floor((secs % 86400) / 3600), mins = Math.floor((secs % 3600) / 60);
+  const parts = [];
+  if (days) parts.push(days + ' 天');
+  if (hours) parts.push(hours + ' 小時');
+  if (!days && mins) parts.push(mins + ' 分');
+  return parts.join(' ') || '不到 1 分';
+}
+
+async function refreshWeatherNotify() {
+  try {
+    const res = await fetchTimed('/api/notify/weather', {cache:'no-store'});
+    if (!res.ok) throw Error('status');
+    const d = await res.json();
+    if (!weatherNotifyInitialized) {
+      el('weatherEnabled').checked = d.enabled;
+      el('weatherMode').value = String(d.mode);
+      el('weatherIntervalHours').value = d.intervalHours;
+      el('weatherStartHour').value = d.startHour;
+      el('weatherDailyTime').value = joinTime(d.dailyHour, d.dailyMinute);
+      el('weatherWeeklyTime').value = joinTime(d.weeklyHour, d.weeklyMinute);
+      writeWeekdays(d.weeklyMask);
+      weatherNotifyInitialized = true;
+      weatherModeSections();
+    }
+    weatherNotifyBusy = d.busy;
+    el('weatherNotifyStatus').textContent =
+      (!d.configured ? '尚未設定 ntfy 主題 · ' : '') +
+      (!d.clockReady ? '尚未完成校時 · ' : '') +
+      d.message + (d.code ? '（狀態碼 ' + d.code + '）' : '');
+    if (d.nextText) {
+      const secs = d.nextSend - Math.floor(Date.now() / 1000);
+      el('weatherNext').textContent = '下一次預計通知：' + d.nextText + (secs > 0 ? '（約 ' + humanizeDuration(secs) + ' 後）' : '');
+    } else {
+      el('weatherNext').textContent = d.enabled ? '下一次預計通知：等待網路校時' : '排程未啟用';
+    }
+    el('weatherNotifySave').disabled = d.busy;
+    el('weatherNotifyTest').disabled = d.busy;
+  } catch (error) {
+    el('weatherNotifyStatus').textContent = '無法讀取天氣通知設定，稍後自動重試。';
+  } finally { setTimeout(refreshWeatherNotify, 3000); }
+}
+
+el('weatherNotifyForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const admin = adminField.value;
+  if (!adminToken && !admin) { setWeatherNotifyState('error', '請先在最上方輸入裝置管理密碼。'); return; }
+  const daily = splitTime(el('weatherDailyTime').value);
+  const weekly = splitTime(el('weatherWeeklyTime').value);
+  const body = new URLSearchParams({
+    enabled: String(el('weatherEnabled').checked),
+    mode: el('weatherMode').value,
+    intervalHours: el('weatherIntervalHours').value,
+    startHour: el('weatherStartHour').value,
+    dailyHour: daily.hour, dailyMinute: daily.minute,
+    weeklyMask: readWeekdays(),
+    weeklyHour: weekly.hour, weeklyMinute: weekly.minute,
+    admin
+  });
+  try {
+    const res = await fetchTimed('/api/notify/weather', {method:'POST', body, headers:authHeaders()});
+    noteForbidden(res);
+    setWeatherNotifyState(res.ok ? 'ok' : 'error', await res.text());
+  } catch (error) { setWeatherNotifyState('error', '未收到回應，請稍後再試。'); }
+});
+
+el('weatherNotifyTest').addEventListener('click', async () => {
+  if (el('weatherNotifyTest').disabled) return;
+  const admin = adminField.value;
+  if (!adminToken && !admin) { setWeatherNotifyState('error', '請先在最上方輸入裝置管理密碼。'); return; }
+  el('weatherNotifyTest').disabled = true;
+  try {
+    const res = await fetchTimed('/api/notify/weather/test', {method:'POST', body:new URLSearchParams({admin}), headers:authHeaders()});
+    noteForbidden(res);
+    setWeatherNotifyState(res.ok ? 'ok' : 'error', await res.text());
+  } catch (error) { setWeatherNotifyState('error', '未收到回應，測試可能已送出；請先查看手機。'); }
+});
+
+refreshWeatherNotify();

@@ -9,6 +9,7 @@ WebServer server(80);
 
 #include "monitor_page.h"
 #include "wifi_manager.h"
+#include "notify.h"
 #include "docs_assets.h"
 
 
@@ -85,6 +86,7 @@ void setup() {
     Serial.begin(115200);
 
     setupWiFiManager(server);
+    setupNotify(server);
 
     // WebServer 初始化
     server.on("/", HTTP_GET, []() {
@@ -130,6 +132,7 @@ void setup() {
 
 void loop() {
   serviceWiFiManager();
+  serviceNotify();
   server.handleClient();
   delay(10);
 }

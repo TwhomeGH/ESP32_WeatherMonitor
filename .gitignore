@@ -11,3 +11,6 @@ build/
 .playwright-mcp/
 node_modules/
 *.log
+
+# Magic Context tooling
+.cortexkit/

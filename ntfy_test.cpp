@@ -36,25 +36,39 @@ bool authorize(WebServer& server) {
   return false;
 }
 
-void publishTest(void*) {
-  int code = -1;
-  {
-    NetworkClientSecure client;
-    client.setCACert(NTFY_CA);
-    client.setHandshakeTimeout(10);
-    HTTPClient http;
-    http.setConnectTimeout(8000);
-    http.setTimeout(8000);
-    if (http.begin(client, "https://ntfy.sh/")) {
-      http.addHeader("Content-Type", "application/json; charset=utf-8");
-      if (request.config.token[0]) http.addHeader("Authorization", String("Bearer ") + request.config.token);
-      const String body = "{\"topic\":\"" + String(request.config.topic) +
-        "\",\"title\":\"ESP32 測試通知\",\"message\":\"這是 ESP32 Monitor 手動測試，不是正式開收盤提醒。測試識別碼：" +
-        String(request.id) + "\",\"tags\":[\"test_tube\"]}";
-      code = http.POST(body);
-      http.end();
-    }
+String jsonEscape(const String& value) {
+  String out = "\"";
+  for (size_t i = 0; i < value.length(); ++i) {
+    const char c = value[i];
+    if (c == '"' || c == '\\') { out += '\\'; out += c; }
+    else if ((unsigned char)c < 0x20) out += ' ';
+    else out += c;
   }
+  return out + '"';
+}
+
+int publishWith(const Config& cfg, const String& title, const String& message, const String& tags) {
+  int code = -1;
+  NetworkClientSecure client;
+  client.setCACert(NTFY_CA);
+  client.setHandshakeTimeout(10);
+  HTTPClient http;
+  http.setConnectTimeout(8000);
+  http.setTimeout(8000);
+  if (http.begin(client, "https://ntfy.sh/")) {
+    http.addHeader("Content-Type", "application/json; charset=utf-8");
+    if (cfg.token[0]) http.addHeader("Authorization", String("Bearer ") + cfg.token);
+    const String body = "{\"topic\":\"" + String(cfg.topic) + "\",\"title\":" + jsonEscape(title) +
+      ",\"message\":" + jsonEscape(message) + ",\"tags\":" + tags + "}";
+    code = http.POST(body);
+    http.end();
+  }
+  return code;
+}
+
+void publishTest(void*) {
+  const int code = publishWith(request.config, "ESP32 測試通知",
+    "這是 ESP32 Monitor 手動測試，不是正式開收盤提醒。測試識別碼：" + String(request.id), "[\"test_tube\"]");
   const char* message = code >= 200 && code < 300 ? "ntfy 已接受，請確認 Android 是否收到；此狀態不代表手機已顯示。" :
     code == 401 || code == 403 ? "認證或主題權限失敗，請檢查存取權杖與訂閱主題。" :
     code == 429 ? "ntfy 限流，請稍後再手動測試。" :
@@ -68,6 +82,14 @@ void publishTest(void*) {
   portEXIT_CRITICAL(&resultLock);
   vTaskDelete(nullptr);
 }
+}
+
+bool ntfyConfigured() { return validTopic(settings.topic); }
+
+bool ntfyPublish(const String& title, const String& message, const String& tags, int& httpCode) {
+  if (!validTopic(settings.topic)) { httpCode = -1; return false; }
+  httpCode = publishWith(settings, title, message, tags);
+  return httpCode >= 200 && httpCode < 300;
 }
 
 void setupNtfyTest(WebServer& server) {

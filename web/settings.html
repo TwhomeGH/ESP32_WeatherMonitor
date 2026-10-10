@@ -74,6 +74,8 @@ button:disabled { background: #334155; color: #94a3b8; cursor: not-allowed; }
 .ok { color: #34d399; }
 .error { color: #f87171; }
 #adminSession .ok { margin: 6px 0 10px; font-size: 13px; }
+.days { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 5px; }
+.days label { margin: 0; }
 @media(max-width: 540px) {
   body { padding: 14px; }
   .grid { grid-template-columns: 1fr; }
@@ -118,6 +120,45 @@ button:disabled { background: #334155; color: #94a3b8; cursor: not-allowed; }
     <p id="ntfyResult" role="status"></p>
     <p class="muted">測試使用已儲存設定；不會自動傳送或重試。看到「ntfy 已接受」後，仍需確認手機是否顯示通知。</p>
   </div>
+  <div class="card wide">
+    <h2>天氣播報通知</h2>
+    <p class="muted">由 ESP32 抓取「天氣地區」的天氣，依排程透過 ntfy 發送（與上方共用同一個主題）。</p>
+    <p id="weatherNotifyStatus" role="status">正在讀取天氣通知設定…</p>
+    <form id="weatherNotifyForm">
+      <label><input id="weatherEnabled" type="checkbox" style="width:auto"> 啟用排程通知</label>
+      <label>排程方式<select id="weatherMode">
+        <option value="0">每 N 小時</option>
+        <option value="1">每天固定時間</option>
+        <option value="2">每週指定星期</option>
+      </select></label>
+      <div id="weatherInterval">
+        <label>間隔小時（1–24）<input id="weatherIntervalHours" type="number" min="1" max="24" value="3"></label>
+        <label>起算時點（整點 0–23）<input id="weatherStartHour" type="number" min="0" max="23" value="0"></label>
+      </div>
+      <div id="weatherDaily" hidden>
+        <label>每天時間<input id="weatherDailyTime" type="time" value="08:00"></label>
+      </div>
+      <div id="weatherWeekly" hidden>
+        <label>星期（可多選）</label>
+        <div class="days">
+          <label><input type="checkbox" class="wd" value="0">一</label>
+          <label><input type="checkbox" class="wd" value="1">二</label>
+          <label><input type="checkbox" class="wd" value="2">三</label>
+          <label><input type="checkbox" class="wd" value="3">四</label>
+          <label><input type="checkbox" class="wd" value="4">五</label>
+          <label><input type="checkbox" class="wd" value="5">六</label>
+          <label><input type="checkbox" class="wd" value="6">日</label>
+        </div>
+        <label>時間<input id="weatherWeeklyTime" type="time" value="08:00"></label>
+      </div>
+      <button id="weatherNotifySave" type="submit">儲存天氣排程</button>
+      <button id="weatherNotifyTest" type="button" disabled>立即發送天氣通知</button>
+    </form>
+    <p id="weatherNotifyResult" role="status"></p>
+    <p id="weatherNext" class="muted"></p>
+    <p class="muted">需要 ESP32 已連上網際網路並完成校時。每 N 小時以整點對齊（例：起算 6、間隔 3 → 06:00、09:00…）。</p>
+  </div>
+
   <div class="card wide">
     <h2>Wi-Fi 設定</h2>
     <p id="wifiState" class="muted">正在讀取連線狀態…</p>
