@@ -1,0 +1,13 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Arduino build / export output
+build/
+
+# Local tooling / preview
+.playwright-mcp/
+node_modules/
+*.log

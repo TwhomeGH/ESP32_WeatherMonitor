@@ -1,0 +1,5 @@
+# Arduino CLI 專案設定（tools/flash.cjs 與 arduino-cli 皆會讀取）。
+# 更換開發板時，把 default_fqbn 改成 Arduino IDE「工具 > 開發板」對應的 FQBN。
+# PartitionScheme=no_fs：4MB 晶片、不使用檔案系統，兩個約 1.94MB 的 app 槽（保留 OTA）。
+# Arduino IDE 對應選項：工具 > Partition Scheme >「No FS 4MB (2MB APP x2)」。
+default_fqbn: esp32:esp32:esp32:PartitionScheme=no_fs

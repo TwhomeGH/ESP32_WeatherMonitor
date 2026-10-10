@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ESP32 設定</title>
+<style>
+* { box-sizing: border-box; }
+html { color-scheme: dark; }
+body {
+  margin: 0;
+  padding: 24px;
+  background: #0b1120;
+  color: #e2e8f0;
+  font-family: system-ui, sans-serif;
+}
+main { max-width: 900px; margin: auto; }
+header { margin-bottom: 24px; }
+h1 { font-size: 24px; margin: 0; }
+h2 { font-size: 15px; margin: 0 0 12px; }
+.subtitle, .muted { color: #94a3b8; font-size: 13px; }
+.subtitle a { color: #7dd3fc; }
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+.card {
+  background: #172033;
+  border: 1px solid #293548;
+  border-radius: 14px;
+  padding: 20px;
+}
+.wide { grid-column: 1 / -1; }
+label { display: block; margin-top: 12px; }
+input, select, button {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font: inherit;
+}
+input, select {
+  width: 100%;
+  margin-top: 5px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+}
+input::placeholder { color: #64748b; }
+input:focus, select:focus {
+  outline: none;
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56,189,248,.25);
+}
+button {
+  margin-top: 14px;
+  cursor: pointer;
+  border: none;
+  background: #38bdf8;
+  color: #0b1120;
+  font-weight: 700;
+  transition: background .2s;
+}
+button:hover:not(:disabled) { background: #7dd3fc; }
+button:disabled { background: #334155; color: #94a3b8; cursor: not-allowed; }
+#locationResults { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+#locationResults button {
+  margin-top: 0;
+  text-align: left;
+  background: #1e293b;
+  color: #e2e8f0;
+  font-weight: 400;
+}
+#locationResults button:hover { background: #334155; }
+@media(max-width: 540px) {
+  body { padding: 14px; }
+  .grid { grid-template-columns: 1fr; }
+  .wide { grid-column: auto; }
+}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>ESP32 設定</h1>
+  <div class="subtitle"><a href="/">← 返回監控頁</a> · <a href="/docs">使用說明</a></div>
+</header>
+
+<section class="grid">
+  <div class="card wide">
+    <h2>ntfy 手動測試通知</h2>
+    <p class="muted">伺服器：https://ntfy.sh · 由 ESP32 發送。正式期貨提醒仍在規劃中。</p>
+    <p id="ntfyStatus" role="status">正在讀取通知狀態…</p>
+    <form id="ntfyForm">
+      <label>訂閱主題<input id="ntfyTopic" required maxlength="64" pattern="[A-Za-z0-9_-]+" autocomplete="off"></label>
+      <p class="muted">請使用難以猜測的專用主題名稱，並在 Android ntfy App 訂閱同一個主題。</p>
+      <label>存取權杖（選填）<input id="ntfyToken" type="password" maxlength="256" autocomplete="new-password"></label>
+      <p id="ntfyTokenState" class="muted">留空保留已儲存的權杖。</p>
+      <label><input id="ntfyClearToken" type="checkbox" style="width:auto"> 清除已儲存權杖</label>
+      <label>裝置管理密碼<input id="ntfyAdmin" type="password" required autocomplete="off"></label>
+      <button id="ntfySave" type="submit">儲存通知設定</button>
+      <button id="ntfyTest" type="button" disabled>發送測試通知</button>
+    </form>
+    <p id="ntfyResult" role="status"></p>
+    <p class="muted">測試使用已儲存設定；不會自動傳送或重試。看到「ntfy 已接受」後，仍需確認手機是否顯示通知。</p>
+  </div>
+  <div class="card wide">
+    <h2>Wi-Fi 設定</h2>
+    <p id="wifiState" class="muted">正在讀取連線狀態…</p>
+    <p id="wifiRecovery" class="muted"></p>
+    <form id="wifiForm">
+      <label>目標 Wi-Fi 名稱（SSID）<input id="wifiSsid" required maxlength="32" autocomplete="off"></label>
+      <label>目標 Wi-Fi 密碼<input id="wifiPassword" type="password" maxlength="64" autocomplete="new-password"></label>
+      <p class="muted">請輸入完整新密碼；留空代表開放網路，並非保留原密碼。支援 2.4 GHz Wi-Fi。</p>
+      <label>裝置管理密碼<input id="wifiAdmin" type="password" required autocomplete="off"></label>
+      <p class="muted">管理密碼顯示於序列監控視窗（115200，重新啟動時印出），亦為備援熱點密碼。請在信任的本地網路設定。</p>
+      <button id="wifiSave" type="submit" disabled>測試並儲存 Wi-Fi</button>
+    </form>
+    <p id="wifiResult" role="status"></p>
+    <p class="muted">新設定連線成功才會儲存，斷電後保留。切換時頁面可能斷線，請連接備援熱點後開啟 http://192.168.4.1/；新路由器可能分配不同 IP。</p>
+  </div>
+
+  <div class="card wide">
+    <h2>天氣地區</h2>
+    <p id="locationCurrent" class="muted">正在讀取共用地區…</p>
+    <form id="locationSearchForm">
+      <label>搜尋範圍 <select id="locationCountry"><option value="TW">台灣</option><option value="">全球</option></select></label>
+      <label>搜尋地名<input id="locationQuery" required minlength="2" placeholder="例如：土城、台北、Tokyo"></label>
+      <button id="locationSearch" type="submit">搜尋地區</button>
+    </form>
+    <div id="locationResults"></div>
+    <form id="locationForm">
+      <label>地區名稱<input id="locationName" required maxlength="32"></label>
+      <label>緯度<input id="latitude" type="number" required min="-90" max="90" step="any"></label>
+      <label>經度<input id="longitude" type="number" required min="-180" max="180" step="any"></label>
+      <label>裝置管理密碼<input id="locationAdmin" type="password" required autocomplete="off"></label>
+      <button id="locationSave" type="submit">儲存共用地區</button>
+    </form>
+    <p id="locationResult" role="status"></p>
+    <p class="muted">地區存在 ESP32，所有裝置共用，斷電後保留。搜尋不到可手動輸入經緯度。地名資料：Open-Meteo / GeoNames。</p>
+  </div>
+</section>
+</main>
+
+<script src="/assets/settings.js"></script>
+</body>
+</html>
