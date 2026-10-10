@@ -1,6 +1,6 @@
 # ESP32 Weather Monitor（ESP32 天氣監控）
 
-以 ESP32 提供的本地監控網頁：顯示硬體狀態與 Open-Meteo 網路天氣，並可設定 Wi-Fi、天氣地區與（規劃中）期貨提醒通知。
+以 ESP32 提供的本地監控網頁：顯示硬體狀態與 Open-Meteo 網路天氣，並可設定 Wi-Fi、天氣地區與（規劃中）期貨與天氣通知。
 
 ## 功能
 
@@ -31,7 +31,9 @@
 ## 文件
 
 - 使用說明：`USER_GUIDE.md`
+- 通知系統設計（期貨 + 天氣）：`NOTIFY_PLAN.md`
 - 期貨提醒規劃：`FUTURES_PLAN.md`
+- 待辦與規劃：`TODO.md`
 
 ## 授權
 
