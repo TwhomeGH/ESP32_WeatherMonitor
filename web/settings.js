@@ -13,6 +13,62 @@ function validLocation(value) {
     Number.isFinite(value.longitude) && Math.abs(value.longitude) <= 180;
 }
 
+const TOKEN_KEY = 'esp32.token.' + location.host;
+const adminField = el('adminPassword');
+let adminToken = localStorage.getItem(TOKEN_KEY) || '';
+function authHeaders() { return adminToken ? {Authorization: 'Bearer ' + adminToken} : {}; }
+function setAdminState(state, text) {
+  const status = el('adminStatus');
+  status.className = state;
+  status.textContent = text || '';
+}
+function showLogin() { el('adminLogin').hidden = false; el('adminSession').hidden = true; }
+function showSession() { el('adminLogin').hidden = true; el('adminSession').hidden = false; }
+function saveToken(value) { adminToken = value; localStorage.setItem(TOKEN_KEY, value); }
+function clearToken() { adminToken = ''; localStorage.removeItem(TOKEN_KEY); }
+async function verifySession() {
+  if (!adminToken) { showLogin(); return; }
+  try {
+    const res = await fetchTimed('/api/admin', {headers:authHeaders(), cache:'no-store'});
+    if (res.ok) showSession();
+    else { clearToken(); showLogin(); }
+  } catch (error) { showSession(); }
+}
+function noteForbidden(res) {
+  if (res.status !== 403) return;
+  clearToken();
+  showLogin();
+  setAdminState('error', '✗ 憑證失效或管理密碼錯誤，請重新輸入');
+}
+adminField.addEventListener('input', () => setAdminState('', ''));
+adminField.addEventListener('blur', async () => {
+  const admin = adminField.value;
+  if (!admin) { setAdminState('', ''); return; }
+  try {
+    const res = await fetchTimed('/api/login', {method:'POST', body:new URLSearchParams({admin})});
+    if (res.ok) {
+      const data = await res.json();
+      saveToken(data.token);
+      adminField.value = '';
+      setAdminState('', '');
+      showSession();
+    } else if (res.status === 403) {
+      setAdminState('error', '✗ 管理密碼錯誤，請重新輸入');
+    } else if (res.status === 503) {
+      setAdminState('', '裝置尚未完成網路校時，暫以密碼操作；稍後會自動取得憑證。');
+    } else {
+      setAdminState('', '暫時無法登入，請稍後再試。');
+    }
+  } catch (error) { setAdminState('', '無法連線裝置，請稍後再試。'); }
+});
+el('adminLogout').addEventListener('click', async () => {
+  try { await fetchTimed('/api/logout', {method:'POST', headers:authHeaders()}); } catch (error) {}
+  clearToken();
+  showLogin();
+  setAdminState('', '已登出。');
+});
+verifySession();
+
 let wifiInitialized = false, wifiSubmitting = false;
 async function refreshWiFi() {
   const controller = new AbortController();
@@ -31,8 +87,8 @@ async function refreshWiFi() {
 }
 el('wifiForm').addEventListener('submit', async event => {
   event.preventDefault();
-  const admin = el('adminPassword').value;
-  if (!admin) { el('wifiResult').textContent = '請先在最上方輸入裝置管理密碼。'; return; }
+  const admin = adminField.value;
+  if (!adminToken && !admin) { el('wifiResult').textContent = '請先在最上方輸入裝置管理密碼。'; return; }
   if (wifiSubmitting) return;
   wifiSubmitting = true;
   el('wifiSave').disabled = true;
@@ -41,7 +97,8 @@ el('wifiForm').addEventListener('submit', async event => {
   const timer = setTimeout(() => controller.abort(), 10000);
   try {
     const body = new URLSearchParams({ssid:el('wifiSsid').value,password:el('wifiPassword').value,admin});
-    const res = await fetch('/api/wifi', {method:'POST',body,signal:controller.signal});
+    const res = await fetch('/api/wifi', {method:'POST',body,signal:controller.signal,headers:authHeaders()});
+    noteForbidden(res);
     const result = await res.text();
     el('wifiResult').textContent = result;
     if (res.ok) el('wifiPassword').value = '';
@@ -103,13 +160,14 @@ el('locationSearchForm').addEventListener('submit', async event => {
 
 el('locationForm').addEventListener('submit', async event => {
   event.preventDefault();
-  const admin = el('adminPassword').value;
-  if (!admin) { el('locationResult').textContent = '請先在最上方輸入裝置管理密碼。'; return; }
+  const admin = adminField.value;
+  if (!adminToken && !admin) { el('locationResult').textContent = '請先在最上方輸入裝置管理密碼。'; return; }
   const next = {name:el('locationName').value.trim(),latitude:Number(el('latitude').value),longitude:Number(el('longitude').value)};
   if (!el('latitude').value.trim() || !el('longitude').value.trim() || !validLocation(next)) { el('locationResult').textContent = '請輸入有效地區名稱與經緯度。'; return; }
   el('locationSave').disabled = true;
   try {
-    const response = await fetchTimed('/api/weather-location', {method:'POST',body:new URLSearchParams({...next,admin})});
+    const response = await fetchTimed('/api/weather-location', {method:'POST',body:new URLSearchParams({...next,admin}),headers:authHeaders()});
+    noteForbidden(response);
     el('locationResult').textContent = await response.text();
   } catch (error) { el('locationResult').textContent = '未收到回應；請查看上方 ESP32 共用地區，確認是否已儲存。'; }
   finally { el('locationSave').disabled = false; }
@@ -145,14 +203,15 @@ async function refreshNtfy() {
 }
 el('ntfyForm').addEventListener('submit', async event => {
   event.preventDefault();
-  const admin = el('adminPassword').value;
-  if (!admin) { el('ntfyResult').textContent = '請先在最上方輸入裝置管理密碼。'; return; }
+  const admin = adminField.value;
+  if (!adminToken && !admin) { el('ntfyResult').textContent = '請先在最上方輸入裝置管理密碼。'; return; }
   if (ntfySubmitting || ntfyBusy) return;
   ntfySubmitting = true; updateNtfyButtons();
   try {
     const response = await fetchTimed('/api/ntfy', {method:'POST',body:new URLSearchParams({
       topic:el('ntfyTopic').value,token:el('ntfyToken').value,
-      clearToken:String(el('ntfyClearToken').checked),admin})});
+      clearToken:String(el('ntfyClearToken').checked),admin}),headers:authHeaders()});
+    noteForbidden(response);
     el('ntfyResult').textContent = await response.text();
     if (response.ok) {
       ntfySavedTopic = el('ntfyTopic').value;
@@ -163,11 +222,12 @@ el('ntfyForm').addEventListener('submit', async event => {
 });
 el('ntfyTest').addEventListener('click', async () => {
   if (el('ntfyTest').disabled) return;
-  const admin = el('adminPassword').value;
-  if (!admin) { el('ntfyResult').textContent = '請先在最上方輸入裝置管理密碼。'; return; }
+  const admin = adminField.value;
+  if (!adminToken && !admin) { el('ntfyResult').textContent = '請先在最上方輸入裝置管理密碼。'; return; }
   ntfySubmitting = true; updateNtfyButtons();
   try {
-    const response = await fetchTimed('/api/ntfy/test', {method:'POST',body:new URLSearchParams({admin})});
+    const response = await fetchTimed('/api/ntfy/test', {method:'POST',body:new URLSearchParams({admin}),headers:authHeaders()});
+    noteForbidden(response);
     el('ntfyResult').textContent = await response.text();
     if (response.ok) ntfyBusy = true;
   } catch (error) {

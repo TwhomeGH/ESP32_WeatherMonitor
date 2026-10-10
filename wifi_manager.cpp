@@ -1,5 +1,6 @@
 #include "wifi_manager.h"
 #include "ntfy_test.h"
+#include "auth.h"
 #include <WiFi.h>
 #include <Preferences.h>
 #include <esp_system.h>
@@ -92,6 +93,8 @@ void setupWiFiManager(WebServer& server) {
   snprintf(suffix, sizeof(suffix), "%012llX", (unsigned long long)ESP.getEfuseMac());
   apName = String("ESP32-Setup-") + suffix;
   Serial.println("Wi-Fi 管理／備援熱點密碼：" + adminPassword);
+  setupAuth(adminPassword);
+  registerAuthRoutes(server);
   Serial.println("備援熱點名稱：" + apName);
   WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
@@ -103,7 +106,7 @@ void setupWiFiManager(WebServer& server) {
     startRecovery();
   }
 
-  setupNtfyTest(server, adminPassword);
+  setupNtfyTest(server);
 
   server.on("/api/weather-location", HTTP_GET, [&server]() {
     server.sendHeader("Cache-Control", "no-store");
@@ -112,7 +115,7 @@ void setupWiFiManager(WebServer& server) {
   });
   server.on("/api/weather-location", HTTP_POST, [&server]() {
     server.sendHeader("Cache-Control", "no-store");
-    if (server.arg("admin") != adminPassword) { server.send(403, "text/plain; charset=utf-8", "管理密碼錯誤。"); return; }
+    if (!authIsAuthorized(server)) { server.send(403, "text/plain; charset=utf-8", "管理密碼錯誤。"); return; }
     if (!storageReady) { server.send(503, "text/plain; charset=utf-8", "設定儲存區無法使用。"); return; }
     WeatherLocation next = {};
     const String name = server.arg("name");
@@ -143,7 +146,7 @@ void setupWiFiManager(WebServer& server) {
   });
   server.on("/api/wifi", HTTP_POST, [&server]() {
     server.sendHeader("Cache-Control", "no-store");
-    if (server.arg("admin") != adminPassword) {
+    if (!authIsAuthorized(server)) {
       server.send(403, "text/plain; charset=utf-8", "管理密碼錯誤，請查看序列監控視窗（115200）。"); return;
     }
     if (!storageReady) { server.send(503, "text/plain; charset=utf-8", "設定儲存區無法使用，未變更網路。"); return; }

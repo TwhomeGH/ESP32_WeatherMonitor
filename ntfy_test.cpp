@@ -1,5 +1,6 @@
 #include "ntfy_test.h"
 #include "ntfy_ca.h"
+#include "auth.h"
 #include <WiFi.h>
 #include <NetworkClientSecure.h>
 #include <HTTPClient.h>
@@ -15,7 +16,6 @@ Config settings = {};
 TestRequest request = {};
 bool ready = false, busy = false, hasAttempt = false;
 uint32_t lastAttempt = 0;
-String managementPassword;
 char resultMessage[240] = "尚未發送測試通知";
 int resultCode = 0;
 portMUX_TYPE resultLock = portMUX_INITIALIZER_UNLOCKED;
@@ -31,7 +31,7 @@ bool validTopic(const String& value) {
 
 bool authorize(WebServer& server) {
   server.sendHeader("Cache-Control", "no-store");
-  if (server.arg("admin") == managementPassword) return true;
+  if (authIsAuthorized(server)) return true;
   server.send(403, "text/plain; charset=utf-8", "管理密碼錯誤。");
   return false;
 }
@@ -70,8 +70,7 @@ void publishTest(void*) {
 }
 }
 
-void setupNtfyTest(WebServer& server, const String& adminPassword) {
-  managementPassword = adminPassword;
+void setupNtfyTest(WebServer& server) {
   ready = prefs.begin("monitor-ntfy", false);
   if (ready && prefs.getBytesLength("config") == sizeof(settings)) {
     prefs.getBytes("config", &settings, sizeof(settings));

@@ -70,6 +70,10 @@ button:disabled { background: #334155; color: #94a3b8; cursor: not-allowed; }
   font-weight: 400;
 }
 #locationResults button:hover { background: #334155; }
+#adminStatus { margin: 6px 0 0; font-size: 13px; }
+.ok { color: #34d399; }
+.error { color: #f87171; }
+#adminSession .ok { margin: 6px 0 10px; font-size: 13px; }
 @media(max-width: 540px) {
   body { padding: 14px; }
   .grid { grid-template-columns: 1fr; }
@@ -87,8 +91,15 @@ button:disabled { background: #334155; color: #94a3b8; cursor: not-allowed; }
 <section class="grid">
   <div class="card wide">
     <h2>裝置管理密碼</h2>
-    <label>密碼<input id="adminPassword" type="password" autocomplete="off"></label>
-    <p class="muted">這是本裝置專用的管理密碼，用來授權下方所有設定變更——<strong>不是你的 Wi-Fi 密碼，也不是路由器密碼</strong>。它由裝置自動產生，於每次開機印在序列監控視窗（鮑率 115200），同時也是備援熱點「ESP32-Setup-…」的連線密碼。請在信任的本地網路設定，此頁輸入一次即可。</p>
+    <div id="adminLogin">
+      <label>密碼<input id="adminPassword" type="password" autocomplete="off"></label>
+      <p id="adminStatus" role="status"></p>
+    </div>
+    <div id="adminSession" hidden>
+      <p class="ok">✓ 已登入（憑證有效 7 天，存在此瀏覽器）</p>
+      <button id="adminLogout" type="button">登出</button>
+    </div>
+    <p class="muted">這是本裝置專用的管理密碼，用來授權下方所有設定變更——<strong>不是你的 Wi-Fi 密碼，也不是路由器密碼</strong>。它由裝置自動產生，於每次開機印在序列監控視窗（鮑率 115200），同時也是備援熱點「ESP32-Setup-…」的連線密碼。驗證成功後裝置會發一組憑證（7 天）存在此瀏覽器，之後不必再輸入原始密碼。</p>
   </div>
 
   <div class="card wide">
