@@ -133,7 +133,7 @@ try {
   const commands = path.join(buildPath, 'compile_commands.json');
   if (fs.existsSync(commands)) {
     fs.mkdirSync(path.join(root, 'build'), { recursive: true });
-    fs.copyFileSync(commands, path.join(root, 'build', 'compile_commands.json'));
+    require('./export-compile-commands.cjs').exportCommands(commands, root);
     info('已更新 build/compile_commands.json（VS Code IntelliSense 用）。');
   }
 } catch (e) { info('略過 compile_commands.json 匯出：' + e.message); }
