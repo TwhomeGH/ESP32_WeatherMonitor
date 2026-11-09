@@ -1,0 +1,7 @@
+[tool.changelog]
+title = "ESP32 Monitor 變更歷史"
+history = "Docs/ChangeHistory.md"
+
+[[tool.changelog.sources]]
+name = "app"
+path = "."

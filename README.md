@@ -34,7 +34,9 @@
 - 使用說明：`USER_GUIDE.md`
 - 通知系統設計（期貨 + 天氣）：`NOTIFY_PLAN.md`
 - 期貨提醒規劃：`FUTURES_PLAN.md`
+- 匯率與生活成本觀察規劃（尚未實作）：[ECONOMY_PLAN.md](ECONOMY_PLAN.md)
 - 待辦與規劃：`TODO.md`
+- 更新紀錄：[Docs/ChangeHistory.md](Docs/ChangeHistory.md)（專案根目錄執行 `changelogkit` 開啟通用歷史管理工具）
 
 ## 授權
 
