@@ -9,14 +9,59 @@
 #include <time.h>
 
 namespace {
-struct Config { char topic[65]; char token[257]; };
-struct TestRequest { Config config; char id[17]; };
+// 保留舊單一目標的二進位布局，供升級時移轉 Preferences 設定。
+struct Config {
+  char topic[65];   // 最多 64 個主題字元，另留字串結尾。
+  char token[257];  // 最多 256 個權杖字元；API 不回傳此內容。
+};
+// 手動測試開始時的設定副本；之後修改目標不會改變已排入的通知。
+struct TestRequest {
+  Config config;
+  char id[17];    // 16 位十六進位識別碼，供手機訊息與 Web 結果對照。
+  char name[65];  // 結果顯示使用的目標名稱。
+};
 Preferences prefs;
-Config settings = {};
+constexpr size_t MAX_TARGETS = 8;
+struct Target {
+  uint32_t id;     // 0 表示空槽；有效 ID 不隨陣列位置改變。
+  char name[65];  // 顯示名稱，最多 64 UTF-8 位元組。
+  Config config;
+  bool enabled;  // 是否接收排程／群發；停用後仍可單獨測試。
+};
+// 整包寫入 targets-v1；調整布局時須新增版本並處理資料移轉。
+struct Settings {
+  uint32_t nextId;  // 遞增配置 ID，避免舊網頁誤操作新建目標。
+  Target targets[MAX_TARGETS];
+};
+Settings settings = {1, {}};
+portMUX_TYPE settingsLock = portMUX_INITIALIZER_UNLOCKED;
+bool publishing = false;
+// 在短暫鎖定期間取得一致副本；實際 HTTPS 發送在鎖外進行。
+Settings snapshot() {
+  Settings copy;
+  portENTER_CRITICAL(&settingsLock); copy = settings; portEXIT_CRITICAL(&settingsLock);
+  return copy;
+}
+// 手動測試與排程共用發送閘門，限制同時僅有一個通知發送工作。
+bool acquirePublish() {
+  portENTER_CRITICAL(&settingsLock);
+  bool available = !publishing;
+  if (available) publishing = true;
+  portEXIT_CRITICAL(&settingsLock);
+  return available;
+}
+void releasePublish() {
+  portENTER_CRITICAL(&settingsLock); publishing = false; portEXIT_CRITICAL(&settingsLock);
+}
+int findTarget(const Settings& data, const String& id) {
+  for (size_t i = 0; i < MAX_TARGETS; ++i)
+    if (data.targets[i].id && String(data.targets[i].id) == id) return i;
+  return -1;
+}
 TestRequest request = {};
 bool ready = false, busy = false, hasAttempt = false;
 uint32_t lastAttempt = 0;
-char resultMessage[240] = "尚未發送測試通知";
+char resultMessage[384] = "尚未發送測試通知";
 int resultCode = 0;
 portMUX_TYPE resultLock = portMUX_INITIALIZER_UNLOCKED;
 
@@ -77,28 +122,56 @@ void publishTest(void*) {
   memset(request.config.token, 0, sizeof(request.config.token));
   portENTER_CRITICAL(&resultLock);
   resultCode = code;
-  strlcpy(resultMessage, message, sizeof(resultMessage));
+  snprintf(resultMessage, sizeof(resultMessage), "%s：%s", request.name, message);
   busy = false;
   portEXIT_CRITICAL(&resultLock);
+  releasePublish();
   vTaskDelete(nullptr);
 }
 }
 
-bool ntfyConfigured() { return validTopic(settings.topic); }
+bool ntfyConfigured() {
+  const Settings data = snapshot();
+  for (const Target& t : data.targets) if (t.id && t.enabled && validTopic(t.config.topic)) return true;
+  return false;
+}
 
 bool ntfyPublish(const String& title, const String& message, const String& tags, int& httpCode) {
-  if (!validTopic(settings.topic)) { httpCode = -1; return false; }
-  httpCode = publishWith(settings, title, message, tags);
-  return httpCode >= 200 && httpCode < 300;
+  if (!acquirePublish()) { httpCode = -1000; return false; }
+  const Settings data = snapshot();
+  int sent = 0, failed = 0, lastError = -1;
+  for (const Target& t : data.targets) {
+    if (!t.id || !t.enabled) continue;
+    const int code = publishWith(t.config, title, message, tags);
+    if (code >= 200 && code < 300) ++sent;
+    else { ++failed; lastError = code; }
+  }
+  releasePublish();
+  // -1001 表示部分成功，禁止把它當成整批成功或自動整批重試。
+  httpCode = failed ? (sent ? -1001 : lastError) : (sent ? 200 : -1);
+  return sent && !failed;
 }
 
 void setupNtfyTest(WebServer& server) {
   ready = prefs.begin("monitor-ntfy", false);
-  if (ready && prefs.getBytesLength("config") == sizeof(settings)) {
-    prefs.getBytes("config", &settings, sizeof(settings));
-    settings.topic[64] = 0;
-    settings.token[256] = 0;
-    if (!validTopic(settings.topic)) memset(&settings, 0, sizeof(settings));
+  if (ready && prefs.isKey("targets-v1")) {
+    if (prefs.getBytesLength("targets-v1") == sizeof(settings)) {
+      prefs.getBytes("targets-v1", &settings, sizeof(settings));
+      for (Target& t : settings.targets) {
+        t.name[64] = 0; t.config.topic[64] = 0; t.config.token[256] = 0;
+        if (t.id && !validTopic(t.config.topic)) t = {};
+      }
+    } else ready = false; // 不以舊設定覆蓋未知格式。
+  } else if (ready && prefs.getBytesLength("config") == sizeof(Config)) {
+    Target& t = settings.targets[0];
+    prefs.getBytes("config", &t.config, sizeof(Config));
+    t.config.topic[64] = 0; t.config.token[256] = 0;
+    if (validTopic(t.config.topic)) {
+      t.id = settings.nextId++; t.enabled = true;
+      strlcpy(t.name, "原有通知目標", sizeof(t.name));
+      ready = prefs.putBytes("targets-v1", &settings, sizeof(settings)) == sizeof(settings);
+      if (ready) prefs.remove("config");
+    }
   }
   configTime(8 * 3600, 0, "pool.ntp.org", "time.google.com");
   server.on("/api/ntfy", HTTP_GET, [&server]() {
@@ -110,38 +183,72 @@ void setupNtfyTest(WebServer& server) {
     memcpy(message, resultMessage, sizeof(message));
     portEXIT_CRITICAL(&resultLock);
     server.sendHeader("Cache-Control", "no-store");
-    // 固定訊息與 topic 不含 JSON 特殊字元；不回傳權杖與管理密碼。
-    server.send(200, "application/json", "{\"topic\":\"" + String(settings.topic) +
-      "\",\"tokenConfigured\":" + String(settings.token[0] ? "true" : "false") +
-      ",\"busy\":" + String(sending ? "true" : "false") +
+    const Settings data = snapshot();
+    String targets = "[";
+    for (const Target& t : data.targets) {
+      if (!t.id) continue;
+      if (targets.length() > 1) targets += ',';
+      targets += "{\"id\":" + String(t.id) + ",\"name\":" + jsonEscape(t.name) +
+        ",\"topic\":" + jsonEscape(t.config.topic) + ",\"enabled\":" + (t.enabled ? "true" : "false") +
+        ",\"tokenConfigured\":" + (t.config.token[0] ? "true" : "false") + "}";
+    }
+    targets += ']';
+    server.send(200, "application/json", "{\"targets\":" + targets +
+      ",\"limit\":8,\"busy\":" + String(sending ? "true" : "false") +
       ",\"clockReady\":" + String(time(nullptr) > 1735689600 ? "true" : "false") +
-      ",\"code\":" + String(code) + ",\"message\":\"" + String(message) + "\"}");
+      ",\"code\":" + String(code) + ",\"message\":" + jsonEscape(message) + "}");
   });
   server.on("/api/ntfy", HTTP_POST, [&server]() {
     if (!authorize(server)) return;
     if (!ready) { server.send(503, "text/plain; charset=utf-8", "設定儲存區無法使用。"); return; }
-    const String topic = server.arg("topic"), token = server.arg("token");
-    bool tokenValid = token.length() <= 256;
-    for (size_t i = 0; i < token.length(); ++i) if ((unsigned char)token[i] < 33 || (unsigned char)token[i] > 126) tokenValid = false;
-    if (!validTopic(topic) || !tokenValid) { server.send(400, "text/plain; charset=utf-8", "主題需為 1–64 個英數字、底線或連字號；權杖格式不正確。"); return; }
-    Config next = settings;
-    strlcpy(next.topic, topic.c_str(), sizeof(next.topic));
-    if (server.arg("clearToken") == "true") memset(next.token, 0, sizeof(next.token));
-    else if (!token.isEmpty()) strlcpy(next.token, token.c_str(), sizeof(next.token));
-    if (prefs.putBytes("config", &next, sizeof(next)) != sizeof(next)) { server.send(500, "text/plain; charset=utf-8", "儲存失敗。"); return; }
-    settings = next;
-    server.send(200, "text/plain; charset=utf-8", "設定已儲存。請在 Android ntfy App 訂閱相同主題，再按發送測試通知。");
+    Settings next = snapshot();
+    const String id = server.arg("id");
+    int index = findTarget(next, id);
+    const bool deleting = server.arg("action") == "delete";
+    if ((id.length() || deleting) && index < 0) { server.send(404, "text/plain; charset=utf-8", "目標不存在，請重新整理。"); return; }
+    if (deleting) next.targets[index] = {};
+    else {
+      const String name = server.arg("name"), topic = server.arg("topic"), token = server.arg("token");
+      bool valid = !name.isEmpty() && name.length() <= 64 && token.length() <= 256;
+      for (size_t i = 0; i < name.length(); ++i) if ((unsigned char)name[i] < 32) valid = false;
+      for (size_t i = 0; i < token.length(); ++i) if ((unsigned char)token[i] < 33 || (unsigned char)token[i] > 126) valid = false;
+      if (!valid || !validTopic(topic)) { server.send(400, "text/plain; charset=utf-8", "名稱限 64 UTF-8 位元組；主題限 1–64 個英數字、底線或連字號；請檢查權杖格式。"); return; }
+      for (size_t i = 0; i < MAX_TARGETS; ++i)
+        if ((int)i != index && next.targets[i].id && topic == next.targets[i].config.topic) {
+          server.send(409, "text/plain; charset=utf-8", "此主題已存在；多支手機可訂閱同一主題。"); return;
+        }
+      if (index < 0) {
+        for (size_t i = 0; i < MAX_TARGETS; ++i) if (!next.targets[i].id) { index = i; break; }
+        if (index < 0 || !next.nextId) { server.send(409, "text/plain; charset=utf-8", "最多可設定 8 組通知目標。"); return; }
+        next.targets[index] = {};
+        next.targets[index].id = next.nextId++;
+      }
+      Target& t = next.targets[index];
+      strlcpy(t.name, name.c_str(), sizeof(t.name));
+      strlcpy(t.config.topic, topic.c_str(), sizeof(t.config.topic));
+      t.enabled = server.arg("enabled") == "true";
+      if (server.arg("clearToken") == "true") memset(t.config.token, 0, sizeof(t.config.token));
+      else if (!token.isEmpty()) strlcpy(t.config.token, token.c_str(), sizeof(t.config.token));
+    }
+    if (prefs.putBytes("targets-v1", &next, sizeof(next)) != sizeof(next)) { server.send(500, "text/plain; charset=utf-8", "儲存失敗。"); return; }
+    prefs.remove("config"); // 已提交新格式後才清除舊單一目標設定。
+    portENTER_CRITICAL(&settingsLock); settings = next; portEXIT_CRITICAL(&settingsLock);
+    server.send(200, "text/plain; charset=utf-8", deleting ? "目標已刪除。已開始的通知仍可能送達。" : "目標已儲存，請選取目標進行測試。");
   });
   server.on("/api/ntfy/test", HTTP_POST, [&server]() {
     if (!authorize(server)) return;
-    if (!validTopic(settings.topic)) { server.send(400, "text/plain; charset=utf-8", "請先儲存 ntfy 主題。"); return; }
+    const Settings data = snapshot();
+    const int index = findTarget(data, server.arg("id"));
+    if (index < 0) { server.send(400, "text/plain; charset=utf-8", "請先儲存 ntfy 主題。"); return; }
     if (WiFi.status() != WL_CONNECTED) { server.send(503, "text/plain; charset=utf-8", "ESP32 尚未連上路由器。"); return; }
     if (time(nullptr) <= 1735689600) { server.send(503, "text/plain; charset=utf-8", "正在同步網路時間，完成後才能驗證 HTTPS 憑證，請稍後再試。"); return; }
     portENTER_CRITICAL(&resultLock);
     const bool sending = busy;
     portEXIT_CRITICAL(&resultLock);
     if (sending || (hasAttempt && millis() - lastAttempt < 10000)) { server.send(429, "text/plain; charset=utf-8", "正在發送或距離上次不足 10 秒，請稍後再試。"); return; }
-    request.config = settings;
+    if (!acquirePublish()) { server.send(409, "text/plain; charset=utf-8", "其他通知正在發送，請稍後再試。"); return; }
+    request.config = data.targets[index].config;
+    strlcpy(request.name, data.targets[index].name, sizeof(request.name));
     snprintf(request.id, sizeof(request.id), "%08lx%08lx", (unsigned long)esp_random(), (unsigned long)esp_random());
     portENTER_CRITICAL(&resultLock);
     busy = true; resultCode = 0;
@@ -153,6 +260,7 @@ void setupNtfyTest(WebServer& server) {
       strlcpy(resultMessage, "記憶體不足，未發送通知。", sizeof(resultMessage));
       portEXIT_CRITICAL(&resultLock);
       memset(request.config.token, 0, sizeof(request.config.token));
+      releasePublish();
       server.send(503, "text/plain; charset=utf-8", "記憶體不足，無法啟動通知工作。"); return;
     }
     hasAttempt = true; lastAttempt = millis();

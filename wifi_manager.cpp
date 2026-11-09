@@ -12,6 +12,8 @@ Preferences preferences;
 Credentials saved = {}, candidate = {};
 struct WeatherLocation { double latitude; double longitude; char name[97]; };
 WeatherLocation weatherLocation = {24.967, 121.436, "新北市土城區"};
+// 獨立儲存顯示偏好，保留既有地區結構的二進位布局。
+uint8_t weatherNameMode = 0; // 0 完整、1 縣市、2 鄉鎮區、3 略過地名。
 String adminPassword, apName;
 String message = "正在連接 Wi-Fi";
 bool storageReady = false, connecting = false, testing = false, queued = false, apActive = false, hasCredentials = false;
@@ -27,6 +29,21 @@ String jsonString(const String& value) {
     else result += char(c);
   }
   return result + '"';
+}
+
+/** 依顯示偏好縮短中文地名；無法辨識行政區時保留原名，不猜測位置。 */
+String weatherDisplayName(const String& fullName) {
+  if (weatherNameMode == 3) return "";
+  if (weatherNameMode == 0) return fullName;
+  int boundary = fullName.indexOf("縣");
+  const int city = fullName.indexOf("市");
+  if (boundary < 0 || (city >= 0 && city < boundary)) boundary = city;
+  if (boundary < 0) return fullName;
+  const int end = boundary + String("市").length();
+  if (weatherNameMode == 1) return fullName.substring(0, end);
+  String district = fullName.substring(end);
+  district.trim();
+  return district.isEmpty() ? fullName : district;
 }
 
 bool startRecovery() {
@@ -71,6 +88,8 @@ bool parseCoordinate(const String& value, double& result) {
 
 void setupWiFiManager(WebServer& server) {
   storageReady = preferences.begin("monitor-wifi", false);
+  weatherNameMode = storageReady ? preferences.getUChar("weather-label", 0) : 0;
+  if (weatherNameMode > 3) weatherNameMode = 0;
   if (storageReady && preferences.getBytesLength("weather") == sizeof(WeatherLocation)) {
     WeatherLocation stored = {};
     if (preferences.getBytes("weather", &stored, sizeof(stored)) == sizeof(stored) &&
@@ -111,7 +130,27 @@ void setupWiFiManager(WebServer& server) {
   server.on("/api/weather-location", HTTP_GET, [&server]() {
     server.sendHeader("Cache-Control", "no-store");
     server.send(200, "application/json", "{\"name\":" + jsonString(weatherLocation.name) +
+      ",\"displayName\":" + jsonString(weatherDisplayName(weatherLocation.name)) +
+      ",\"nameMode\":" + String(weatherNameMode) +
       ",\"latitude\":" + String(weatherLocation.latitude, 6) + ",\"longitude\":" + String(weatherLocation.longitude, 6) + "}");
+  });
+  server.on("/api/weather-label", HTTP_POST, [&server]() {
+    server.sendHeader("Cache-Control", "no-store");
+    if (!authIsAuthorized(server)) {
+      server.send(403, "text/plain; charset=utf-8", "管理密碼錯誤。");
+      return;
+    }
+    const String mode = server.arg("mode");
+    if (mode != "0" && mode != "1" && mode != "2" && mode != "3") {
+      server.send(400, "text/plain; charset=utf-8", "地名顯示選項無效。");
+      return;
+    }
+    if (!storageReady || preferences.putUChar("weather-label", mode.toInt()) != 1) {
+      server.send(503, "text/plain; charset=utf-8", "地名設定儲存失敗。");
+      return;
+    }
+    weatherNameMode = mode.toInt();
+    server.send(200, "text/plain; charset=utf-8", "地名顯示已儲存，套用至後續 ntfy 天氣通知；網頁地名與查詢座標未變更。");
   });
   server.on("/api/weather-location", HTTP_POST, [&server]() {
     server.sendHeader("Cache-Control", "no-store");
@@ -208,6 +247,6 @@ void serviceWiFiManager() {
 bool getWeatherLocation(double& latitude, double& longitude, String& name) {
   latitude = weatherLocation.latitude;
   longitude = weatherLocation.longitude;
-  name = weatherLocation.name;
-  return name.length() > 0;
+  name = weatherDisplayName(weatherLocation.name);
+  return weatherLocation.name[0] != 0;
 }

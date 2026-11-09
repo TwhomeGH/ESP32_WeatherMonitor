@@ -2,8 +2,8 @@
 #include <WebServer.h>
 void setupNtfyTest(WebServer& server);
 
-// 是否已設定有效的 ntfy 主題。
+// 是否至少有一組已啟用的 ntfy 目標。
 bool ntfyConfigured();
 
-// 以目前儲存的主題／權杖同步發送一則 ntfy 通知。回傳是否 2xx，httpCode 為狀態碼（無連線為負值）。
+// 依序發送至所有已啟用目標。全部成功才回傳 true；-1000 發送忙碌，-1001 部分成功。
 bool ntfyPublish(const String& title, const String& message, const String& tags, int& httpCode);

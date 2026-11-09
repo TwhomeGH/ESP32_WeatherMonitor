@@ -107,6 +107,31 @@ el('wifiForm').addEventListener('submit', async event => {
   } finally { clearTimeout(timer); wifiSubmitting = false; el('wifiSave').disabled = false; }
 });
 
+let weatherLabelSavedMode = null;
+let weatherLabelSaving = false;
+let weatherLabelFeedback = false;
+
+/** 用顏色與文字共同表達狀態，避免只靠顏色辨識成功或失敗。 */
+function setWeatherLabelState(state, message) {
+  el('weatherLabelResult').className = 'status-box ' + state;
+  el('weatherLabelResult').textContent = message;
+}
+
+/** 比較選單與裝置確認過的設定；尚未儲存的選擇不宣稱已生效。 */
+function showWeatherLabelSelection() {
+  if (weatherLabelSavedMode === null) {
+    setWeatherLabelState('warning', '⚠ 尚未確認裝置設定，請稍候或重新整理。');
+  } else if (el('weatherNameMode').value !== weatherLabelSavedMode) {
+    setWeatherLabelState('warning', '● 尚未儲存：這個選擇還沒生效，請按「儲存地名顯示」。');
+  } else {
+    setWeatherLabelState('ok', '✓ 已儲存並套用於後續 ntfy 天氣通知；網頁地名與查詢座標不變。');
+  }
+}
+el('weatherNameMode').addEventListener('change', () => {
+  weatherLabelFeedback = false;
+  showWeatherLabelSelection();
+});
+
 let locationInitialized = false;
 async function refreshLocation() {
   try {
@@ -114,16 +139,62 @@ async function refreshLocation() {
     if (!response.ok) throw Error('Location unavailable');
     const next = await response.json();
     if (!locationInitialized) {
+      el('weatherNameMode').value = String(next.nameMode ?? 0);
       el('locationName').value = next.name;
       el('latitude').value = next.latitude;
       el('longitude').value = next.longitude;
       locationInitialized = true;
+    }
+    if (!weatherLabelSaving) {
+      weatherLabelSavedMode = String(next.nameMode ?? 0);
+      const option = [...el('weatherNameMode').options].find(item => item.value === weatherLabelSavedMode);
+      el('weatherLabelCurrent').textContent = '裝置目前使用：' + (option?.textContent || '未知設定') +
+        '；通知地名：' + (next.displayName === '' ? '省略地名' : (next.displayName ?? next.name));
+      if (!weatherLabelFeedback) showWeatherLabelSelection();
     }
     el('locationCurrent').textContent = 'ESP32 共用地區：' + next.name + '（' + next.latitude + ', ' + next.longitude + '）';
   } catch (error) {
     el('locationCurrent').textContent = '無法讀取 ESP32 的地區設定，稍後自動重試。';
   } finally { setTimeout(refreshLocation, 5000); }
 }
+
+el('weatherLabelForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const admin = adminField.value;
+  if (!adminToken && !admin) {
+    weatherLabelFeedback = true;
+    setWeatherLabelState('error', '✗ 尚未儲存：請先登入管理設定。');
+    return;
+  }
+  if (weatherLabelSaving) return;
+  weatherLabelSaving = true;
+  weatherLabelFeedback = true;
+  const selectedMode = el('weatherNameMode').value;
+  el('weatherLabelSave').disabled = true;
+  el('weatherNameMode').disabled = true;
+  setWeatherLabelState('pending', '⏳ 正在儲存，尚未確認生效…');
+  try {
+    const response = await fetchTimed('/api/weather-label', {
+      method: 'POST', headers: authHeaders(),
+      body: new URLSearchParams({mode: selectedMode, admin})
+    });
+    noteForbidden(response);
+    const message = await response.text();
+    if (response.ok) {
+      weatherLabelSavedMode = selectedMode;
+      el('weatherLabelCurrent').textContent = '裝置已儲存：' + el('weatherNameMode').selectedOptions[0].textContent;
+      showWeatherLabelSelection();
+    } else {
+      setWeatherLabelState('error', '✗ 儲存失敗，選擇未生效：' + message);
+    }
+  } catch (error) {
+    setWeatherLabelState('warning', '⚠ 未收到回應，無法確認是否生效；請重新整理核對裝置設定。');
+  } finally {
+    weatherLabelSaving = false;
+    el('weatherLabelSave').disabled = false;
+    el('weatherNameMode').disabled = false;
+  }
+});
 
 el('locationSearchForm').addEventListener('submit', async event => {
   event.preventDefault();
@@ -176,65 +247,88 @@ el('locationForm').addEventListener('submit', async event => {
 refreshWiFi();
 refreshLocation();
 
-let ntfyInitialized = false, ntfySubmitting = false, ntfySavedTopic = '';
-let ntfyReady = false, ntfyBusy = false;
-function updateNtfyButtons() {
-  el('ntfySave').disabled = ntfySubmitting || ntfyBusy;
-  el('ntfyTest').disabled = ntfySubmitting || ntfyBusy || !ntfyReady || !ntfySavedTopic ||
-    el('ntfyTopic').value !== ntfySavedTopic || !!el('ntfyToken').value || el('ntfyClearToken').checked;
+let ntfyInitialized = false, ntfySubmitting = false, ntfyTargets = [];
+let ntfyReady = false, ntfyBusy = false, ntfyGeneration = 0;
+function selectedNtfy() { return ntfyTargets.find(t => String(t.id) === el('ntfySelect').value); }
+function loadNtfyForm() {
+  const t = selectedNtfy();
+  el('ntfyName').value = t?.name || '';
+  el('ntfyTopic').value = t?.topic || '';
+  el('ntfyEnabled').checked = t ? t.enabled : true;
+  el('ntfyToken').value = ''; el('ntfyClearToken').checked = false;
+  el('ntfyTokenState').textContent = (t?.tokenConfigured ? '已儲存權杖；' : '未設定權杖；') + '留空保留此目標的權杖。';
+  updateNtfyButtons();
 }
-['ntfyTopic','ntfyToken','ntfyClearToken'].forEach(id => el(id).addEventListener('input', updateNtfyButtons));
-async function refreshNtfy() {
+function updateNtfyButtons() {
+  const t = selectedNtfy(), locked = ntfySubmitting || ntfyBusy;
+  const dirty = !t || el('ntfyTopic').value !== t.topic || el('ntfyName').value !== t.name ||
+    el('ntfyEnabled').checked !== t.enabled || !!el('ntfyToken').value || el('ntfyClearToken').checked;
+  el('ntfySave').disabled = locked || (!t && ntfyTargets.length >= 8);
+  el('ntfyDelete').disabled = locked || !t;
+  el('ntfyTest').disabled = locked || !ntfyReady || dirty;
+  el('ntfySelect').disabled = ntfySubmitting;
+}
+el('ntfySelect').addEventListener('change', loadNtfyForm);
+['ntfyName','ntfyEnabled','ntfyTopic','ntfyToken','ntfyClearToken'].forEach(id => el(id).addEventListener('input', updateNtfyButtons));
+async function refreshNtfy(reset = false) {
+  const generation = ntfyGeneration;
   try {
     const response = await fetchTimed('/api/ntfy', {cache:'no-store'});
     if (!response.ok) throw Error('Status unavailable');
     const d = await response.json();
-    ntfySavedTopic = d.topic;
-    ntfyReady = d.clockReady;
-    ntfyBusy = d.busy;
-    if (!ntfyInitialized) { el('ntfyTopic').value = d.topic; ntfyInitialized = true; }
+    // 儲存期間的舊輪詢結果不覆蓋編輯畫面。
+    if (generation !== ntfyGeneration || (ntfySubmitting && !reset)) return;
+    const selected = el('ntfySelect').value;
+    ntfyTargets = d.targets;
+    el('ntfySelect').replaceChildren(new Option('＋ 新增目標（' + d.targets.length + '/8）', ''));
+    d.targets.forEach(t => el('ntfySelect').add(new Option(t.name + (t.enabled ? '' : '（停用）'), String(t.id))));
+    el('ntfySelect').value = selected;
+    if (!ntfyInitialized) el('ntfySelect').value = d.targets.length ? String(d.targets[0].id) : '';
+    ntfyReady = d.clockReady; ntfyBusy = d.busy;
+    if (!ntfyInitialized || reset || (selected && !selectedNtfy())) loadNtfyForm();
+    ntfyInitialized = true;
     el('ntfyStatus').textContent = d.message + (d.code ? '（狀態碼 ' + d.code + '）' : '') +
-      (!d.clockReady ? ' · 正在同步網路時間，完成後才能測試 HTTPS 通知。' : '');
-    el('ntfyTokenState').textContent = (d.tokenConfigured ? '已儲存權杖；' : '未設定權杖；') + '留空保留現有設定。';
+      (!d.clockReady ? ' · 正在同步網路時間。' : '');
   } catch (error) {
     ntfyReady = false;
     el('ntfyStatus').textContent = '無法讀取通知狀態，稍後自動重試。';
-  } finally { updateNtfyButtons(); setTimeout(refreshNtfy, 3000); }
+  } finally { updateNtfyButtons(); }
 }
-el('ntfyForm').addEventListener('submit', async event => {
-  event.preventDefault();
+async function pollNtfy() { await refreshNtfy(); setTimeout(pollNtfy, 3000); }
+async function ntfyAction(action) {
+  if (ntfySubmitting) return;
   const admin = adminField.value;
   if (!adminToken && !admin) { el('ntfyResult').textContent = '請先在最上方輸入裝置管理密碼。'; return; }
-  if (ntfySubmitting || ntfyBusy) return;
+  if (action === 'delete' && !confirm('刪除這個通知目標？已開始發送的通知仍可能送達。')) return;
+  ntfyGeneration++;
   ntfySubmitting = true; updateNtfyButtons();
   try {
-    const response = await fetchTimed('/api/ntfy', {method:'POST',body:new URLSearchParams({
-      topic:el('ntfyTopic').value,token:el('ntfyToken').value,
-      clearToken:String(el('ntfyClearToken').checked),admin}),headers:authHeaders()});
+    const response = await fetchTimed(action === 'test' ? '/api/ntfy/test' : '/api/ntfy', {
+      method:'POST', headers:authHeaders(), body:new URLSearchParams({
+        id:el('ntfySelect').value, action, admin, name:el('ntfyName').value.trim(),
+        enabled:String(el('ntfyEnabled').checked), topic:el('ntfyTopic').value,
+        token:el('ntfyToken').value, clearToken:String(el('ntfyClearToken').checked)})});
     noteForbidden(response);
     el('ntfyResult').textContent = await response.text();
     if (response.ok) {
-      ntfySavedTopic = el('ntfyTopic').value;
-      el('ntfyToken').value = ''; el('ntfyClearToken').checked = false;
+      if (action === 'test') ntfyBusy = true;
+      else {
+        const savedTopic = el('ntfyTopic').value;
+        await refreshNtfy(true);
+        if (action === 'save') {
+          const saved = ntfyTargets.find(t => t.topic === savedTopic);
+          if (saved) { el('ntfySelect').value = String(saved.id); loadNtfyForm(); }
+        }
+      }
     }
-  } catch (error) { el('ntfyResult').textContent = '未收到儲存回應，請等候狀態更新後再試。'; }
-  finally { ntfySubmitting = false; updateNtfyButtons(); }
-});
-el('ntfyTest').addEventListener('click', async () => {
-  if (el('ntfyTest').disabled) return;
-  const admin = adminField.value;
-  if (!adminToken && !admin) { el('ntfyResult').textContent = '請先在最上方輸入裝置管理密碼。'; return; }
-  ntfySubmitting = true; updateNtfyButtons();
-  try {
-    const response = await fetchTimed('/api/ntfy/test', {method:'POST',body:new URLSearchParams({admin}),headers:authHeaders()});
-    noteForbidden(response);
-    el('ntfyResult').textContent = await response.text();
-    if (response.ok) ntfyBusy = true;
   } catch (error) {
-    el('ntfyResult').textContent = '未收到回應，測試可能已送達；請先查看手機，不會自動重送。';
+    el('ntfyResult').textContent = '未收到回應；請重新整理確認設定。測試可能已送達，請先查看手機，不會自動重送。';
   } finally { ntfySubmitting = false; updateNtfyButtons(); }
-});
-refreshNtfy();
+}
+el('ntfyForm').addEventListener('submit', event => { event.preventDefault(); if (!el('ntfySave').disabled) ntfyAction('save'); });
+el('ntfyTest').addEventListener('click', () => { if (!el('ntfyTest').disabled) ntfyAction('test'); });
+el('ntfyDelete').addEventListener('click', () => { if (!el('ntfyDelete').disabled) ntfyAction('delete'); });
+pollNtfy();
 
 let weatherNotifyInitialized = false, weatherNotifyBusy = false;
 function weatherModeSections() {
@@ -275,8 +369,11 @@ async function refreshWeatherNotify() {
       weatherModeSections();
     }
     weatherNotifyBusy = d.busy;
+    el('weatherNotifyStatus').className = 'status-box ' +
+      (d.busy ? 'pending' : !d.configured || !d.clockReady || !d.enabled ? 'warning' : d.code < 0 || d.code >= 400 ? 'error' : 'ok');
     el('weatherNotifyStatus').textContent =
-      (!d.configured ? '尚未設定 ntfy 主題 · ' : '') +
+      (!d.enabled ? '排程未啟用（仍可手動測試） · ' : '排程已啟用 · ') +
+      (!d.configured ? '尚未設定已啟用的 ntfy 目標 · ' : '') +
       (!d.clockReady ? '尚未完成校時 · ' : '') +
       d.message + (d.code ? '（狀態碼 ' + d.code + '）' : '');
     if (d.nextText) {
@@ -286,7 +383,9 @@ async function refreshWeatherNotify() {
       el('weatherNext').textContent = d.enabled ? '下一次預計通知：等待網路校時' : '排程未啟用';
     }
     el('weatherNotifySave').disabled = d.busy;
-    el('weatherNotifyTest').disabled = d.busy;
+    el('weatherNotifyTest').disabled = d.busy || !d.configured || !d.clockReady;
+    el('weatherNotifyTest').title = !d.configured ? '請先設定至少一組已啟用的 ntfy 目標' :
+      !d.clockReady ? '等待 ESP32 完成網路校時' : d.busy ? '正在發送，請稍候' : '發送已儲存地區的測試天氣通知';
   } catch (error) {
     el('weatherNotifyStatus').textContent = '無法讀取天氣通知設定，稍後自動重試。';
   } finally { setTimeout(refreshWeatherNotify, 3000); }

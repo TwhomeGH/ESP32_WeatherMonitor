@@ -7,16 +7,23 @@
 #include <Preferences.h>
 #include <time.h>
 
+// 匿名命名空間：以下排程型別與狀態僅供本檔案使用。
 namespace {
+/**
+ * 天氣通知排程，時間欄位依裝置設定的台灣時區解讀。
+ * 整個結構直接以 Preferences 二進位格式儲存；修改欄位順序或型別時，
+ * 必須同步處理舊設定移轉，不能只修改結構宣告。
+ * lastSent 記錄已處理的排程時段，不代表 ntfy 或手機已成功收件。
+ */
 struct WeatherSchedule {
-  uint8_t enabled;        // 0/1
+  uint8_t enabled;        // 0：停用排程；1：啟用排程（不影響手動測試）
   uint8_t mode;           // 0 每 N 小時、1 每天、2 每週
   uint8_t intervalHours;  // 1..24
   uint8_t startHour;      // 0..23（每 N 小時的起算整點）
-  uint8_t dailyHour, dailyMinute;
+  uint8_t dailyHour, dailyMinute;  // 每日模式的時、分（0..23、0..59）
   uint8_t weeklyMask;     // bit0=一 .. bit6=日
-  uint8_t weeklyHour, weeklyMinute;
-  uint32_t lastSent;      // 上次排程發送的 epoch（0=無）
+  uint8_t weeklyHour, weeklyMinute;  // 每週模式的時、分（0..23、0..59）
+  uint32_t lastSent;      // 上次已處理時段的 Unix 秒數；0 表示尚未處理
 };
 
 Preferences prefs;
@@ -27,6 +34,7 @@ uint32_t lastCheck = 0;
 uint32_t lastAttempt = 0;
 char resultMessage[240] = "尚未發送天氣通知";
 int resultCode = 0;
+// 背景發送工作與 Web 查詢共用結果，鎖內只更新／複製狀態，不執行網路操作。
 portMUX_TYPE lock = portMUX_INITIALIZER_UNLOCKED;
 
 bool clockReady() { return time(nullptr) > 1735689600; }
@@ -50,7 +58,9 @@ void setResult(int code, const String& message) {
 }
 
 String resultText(int code) {
-  if (code >= 200 && code < 300) return "ntfy 已接受天氣通知，請確認 Android 是否收到。";
+  if (code == -1001) return "部分目標成功、部分失敗；請逐組測試。為避免重複，不會自動整批重送。";
+  if (code == -1000) return "其他通知正在發送，本次未送出；請稍後手動測試。";
+  if (code >= 200 && code < 300) return "ntfy 已接受所有啟用目標的天氣通知，請確認 Android 是否收到。";
   if (code == 401 || code == 403) return "ntfy 認證或主題權限失敗，請檢查存取權杖與主題。";
   if (code == 429) return "ntfy 限流，請稍後再試。";
   if (code < 0) return "連線／TLS 失敗或逾時；請確認 ESP32 可上網且已完成校時。";
@@ -103,7 +113,9 @@ String formatTime(time_t value) {
   return String(buf);
 }
 
-void weatherTask(void*) {
+// 背景工作：先取得天氣，再交由 ntfyPublish 依序發送至所有已啟用目標。
+void weatherTask(void* parameter) {
+  const bool manualTest = parameter != nullptr;
   double latitude, longitude;
   String name;
   if (!getWeatherLocation(latitude, longitude, name)) { setResult(-1, "尚未設定天氣地區，請先在設定頁設定。"); vTaskDelete(nullptr); return; }
@@ -111,12 +123,13 @@ void weatherTask(void*) {
   String error;
   if (!fetchWeather(latitude, longitude, data, error)) { setResult(-1, "取得天氣失敗：" + error); vTaskDelete(nullptr); return; }
   int code = -1;
-  ntfyPublish("天氣 · " + name, weatherMessage(data), "[\"cloud\"]", code);
+  const String title = String(manualTest ? "測試天氣通知" : "天氣") + (name.isEmpty() ? String() : " · " + name);
+  ntfyPublish(title, weatherMessage(data), "[\"cloud\"]", code);
   setResult(code, resultText(code));
   vTaskDelete(nullptr);
 }
 
-bool startWeatherSend() {
+bool startWeatherSend(bool manualTest = false) {
   portENTER_CRITICAL(&lock);
   const bool sending = busy;
   portEXIT_CRITICAL(&lock);
@@ -125,7 +138,7 @@ bool startWeatherSend() {
   busy = true; resultCode = 0;
   strlcpy(resultMessage, "發送中…", sizeof(resultMessage));
   portEXIT_CRITICAL(&lock);
-  if (xTaskCreate(weatherTask, "weather-notify", 16384, nullptr, 1, nullptr) != pdPASS) {
+  if (xTaskCreate(weatherTask, "weather-notify", 16384, manualTest ? reinterpret_cast<void*>(1) : nullptr, 1, nullptr) != pdPASS) {
     setResult(-1, "記憶體不足，未發送天氣通知。");
     return false;
   }
@@ -202,12 +215,16 @@ void setupNotify(WebServer& server) {
     if (WiFi.status() != WL_CONNECTED) { server.send(503, "text/plain; charset=utf-8", "ESP32 尚未連上路由器。"); return; }
     if (!clockReady()) { server.send(503, "text/plain; charset=utf-8", "正在同步網路時間，稍後再試。"); return; }
     if (busy || (lastAttempt && millis() - lastAttempt < 10000)) { server.send(429, "text/plain; charset=utf-8", "正在發送或距離上次不足 10 秒，請稍後再試。"); return; }
-    if (!startWeatherSend()) { server.send(503, "text/plain; charset=utf-8", "無法啟動發送工作。"); return; }
+    if (!startWeatherSend(true)) { server.send(503, "text/plain; charset=utf-8", "無法啟動發送工作。"); return; }
     lastAttempt = millis();
-    server.send(202, "text/plain; charset=utf-8", "天氣通知已排入發送，請查看下方結果並確認手機。");
+    server.send(202, "text/plain; charset=utf-8", "測試天氣通知已排入發送，將寄至所有已啟用的 ntfy 目標；請查看結果並確認手機。");
   });
 }
 
+/**
+ * 由主迴圈定期呼叫，每 20 秒檢查一次是否到達排程分鐘。
+ * 啟動工作前先記錄時段以防重複；失敗不自動重試，也不補送錯過的分鐘。
+ */
 void serviceNotify() {
   const uint32_t nowMs = millis();
   if (nowMs - lastCheck < 20000) return;

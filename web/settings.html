@@ -73,6 +73,10 @@ button:disabled { background: #334155; color: #94a3b8; cursor: not-allowed; }
 #adminStatus { margin: 6px 0 0; font-size: 13px; }
 .ok { color: #34d399; }
 .error { color: #f87171; }
+.warning { color: #fbbf24; }
+.pending { color: #7dd3fc; }
+.status-box { padding: 10px 12px; border-left: 3px solid currentColor; background: #0b1120; border-radius: 6px; }
+select:disabled, input:disabled { color: #94a3b8; background: #263244; cursor: not-allowed; }
 #adminSession .ok { margin: 6px 0 10px; font-size: 13px; }
 .days { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 5px; }
 .days label { margin: 0; }
@@ -105,25 +109,30 @@ button:disabled { background: #334155; color: #94a3b8; cursor: not-allowed; }
   </div>
 
   <div class="card wide">
-    <h2>ntfy 手動測試通知</h2>
+    <h2>ntfy 通知目標</h2>
     <p class="muted">伺服器：https://ntfy.sh · 由 ESP32 發送。正式期貨提醒仍在規劃中。</p>
     <p id="ntfyStatus" role="status">正在讀取通知狀態…</p>
+    <label>通知目標<select id="ntfySelect"><option value="">新增目標</option></select></label>
     <form id="ntfyForm">
+      <label>目標名稱<input id="ntfyName" required maxlength="64" placeholder="例如：爸爸的手機"></label>
+      <label><input id="ntfyEnabled" type="checkbox" checked style="width:auto"> 接收排程通知</label>
       <label>訂閱主題<input id="ntfyTopic" required maxlength="64" pattern="[A-Za-z0-9_-]+" autocomplete="off"></label>
       <p class="muted">請使用難以猜測的專用主題名稱，並在 Android ntfy App 訂閱同一個主題。</p>
       <label>存取權杖（選填）<input id="ntfyToken" type="password" maxlength="256" autocomplete="new-password"></label>
       <p id="ntfyTokenState" class="muted">留空保留已儲存的權杖。</p>
       <label><input id="ntfyClearToken" type="checkbox" style="width:auto"> 清除已儲存權杖</label>
       <button id="ntfySave" type="submit">儲存通知設定</button>
+      <button id="ntfyDelete" type="button" disabled>刪除此目標</button>
       <button id="ntfyTest" type="button" disabled>發送測試通知</button>
     </form>
     <p id="ntfyResult" role="status"></p>
-    <p class="muted">測試使用已儲存設定；不會自動傳送或重試。看到「ntfy 已接受」後，仍需確認手機是否顯示通知。</p>
+    <p class="muted">最多 8 組；多支手機也可訂閱同一主題。停用目標仍可手動測試。測試只使用所選目標的已儲存設定；不會自動傳送或重試。看到「ntfy 已接受」後，仍需確認手機是否顯示通知。</p>
   </div>
   <div class="card wide">
     <h2>天氣播報通知</h2>
-    <p class="muted">由 ESP32 抓取「天氣地區」的天氣，依排程透過 ntfy 發送（與上方共用同一個主題）。</p>
-    <p id="weatherNotifyStatus" role="status">正在讀取天氣通知設定…</p>
+    <p class="muted">由 ESP32 抓取「天氣地區」的天氣，依排程透過 ntfy 發送（發送至上方所有已啟用的目標）。</p>
+    <p class="muted">測試會立即抓取真實天氣並寄送至所有已啟用的 ntfy 目標，不需啟用排程；使用已儲存的地區與地名選項。</p>
+    <p id="weatherNotifyStatus" class="status-box pending" role="status">正在讀取天氣通知設定…</p>
     <form id="weatherNotifyForm">
       <label><input id="weatherEnabled" type="checkbox" style="width:auto"> 啟用排程通知</label>
       <label>排程方式<select id="weatherMode">
@@ -152,7 +161,7 @@ button:disabled { background: #334155; color: #94a3b8; cursor: not-allowed; }
         <label>時間<input id="weatherWeeklyTime" type="time" value="08:00"></label>
       </div>
       <button id="weatherNotifySave" type="submit">儲存天氣排程</button>
-      <button id="weatherNotifyTest" type="button" disabled>立即發送天氣通知</button>
+      <button id="weatherNotifyTest" type="button" disabled>發送測試天氣通知</button>
     </form>
     <p id="weatherNotifyResult" role="status"></p>
     <p id="weatherNext" class="muted"></p>
@@ -176,6 +185,18 @@ button:disabled { background: #334155; color: #94a3b8; cursor: not-allowed; }
   <div class="card wide">
     <h2>天氣地區</h2>
     <p id="locationCurrent" class="muted">正在讀取共用地區…</p>
+    <form id="weatherLabelForm">
+      <label>ntfy 天氣通知的地名顯示<select id="weatherNameMode">
+        <option value="0">完整地名（新北市土城區）</option>
+        <option value="1">只報縣市（新北市）</option>
+        <option value="2">只報鄉鎮區（土城區）</option>
+        <option value="3">略過地名（仍報天氣）</option>
+      </select></label>
+      <button id="weatherLabelSave" type="submit">儲存地名顯示</button>
+    </form>
+    <p id="weatherLabelCurrent" class="muted" role="status">正在確認裝置目前使用的地名設定…</p>
+    <p id="weatherLabelResult" class="status-box pending" role="status" aria-live="polite">讀取設定中，尚未確認生效狀態。</p>
+    <p class="muted">括號內是範例。僅調整 ntfy 地名；網頁保留完整地名。查詢座標不變，也不代表全市平均天氣。無法辨識縣市的地名會保留原名。</p>
     <form id="locationSearchForm">
       <label>搜尋範圍 <select id="locationCountry"><option value="TW">台灣</option><option value="">全球</option></select></label>
       <label>搜尋地名<input id="locationQuery" required minlength="2" placeholder="例如：土城、台北、Tokyo"></label>
