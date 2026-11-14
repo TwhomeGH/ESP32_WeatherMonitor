@@ -17,10 +17,12 @@ async function page(t, overrides = {}) {
   const api = {
     calls: [], reject: false, failRead: false,
     state: {
-      currency: 'USD', enabled: false, armed: true, threshold: 0, margin: 0.5,
-      times: '09:30', targets: [1], currencies: ['USD', 'EUR', 'JPY'], price: 32, priceText: '32',
+      currency: 'USD', enabled: false, armed: true, threshold: 0, thresholdText: '0', margin: 0.5,
+      rearmPrice: 0, rearmText: '—', times: '09:30', targets: [1],
+      currencies: ['USD', 'EUR', 'JPY'], price: 32, priceText: '32',
       sourceTime: 1800000000, fetchedAt: 1800000100, nextUpdate: 1800086400,
-      fresh: true, clockReady: true, targetsReady: true, busy: false, message: '待命', ...overrides
+      fresh: true, clockReady: true, targetsReady: true, notifiedToday: false, evaluated: false,
+      nextCheck: '今天 09:30', busy: false, message: '待命', ...overrides
     }
   };
   const polls = [];
@@ -78,6 +80,55 @@ test('直接顯示裝置格式化後的報價，低價幣別不被壓成 2 位',
 test('沒有報價時不顯示任何數值', async t => {
   const {field} = await page(t, {price: null, priceText: null});
   assert.equal(field('fxQuote').textContent, '尚未取得 USD 報價');
+});
+
+test('規則預覽顯示觸發、重新武裝與目前差距', async t => {
+  const {field} = await page(t, {
+    enabled: true, threshold: 32.5, thresholdText: '32.50', rearmPrice: 32.6625, rearmText: '32.6625',
+    price: 32.9218107, priceText: '32.92', evaluated: true
+  });
+  const rule = field('fxRule').textContent;
+  assert.match(rule, /報價 ≤ 32.50 TWD（等於也算）/);
+  assert.match(rule, /報價 > 32.6625 TWD 後才可能再次通知/);
+  assert.match(rule, /32.92 TWD，高於門檻 1.30%｜已武裝/);
+  assert.match(rule, /09:30｜下一次：今天 09:30/);
+  assert.match(field('fxRuleNote').textContent, /這份報價已判斷過/);
+  assert.equal(field('fxRuleDraft').hidden, true);
+});
+
+test('報價低於門檻時提示下一次檢查會通知', async t => {
+  const {field} = await page(t, {
+    enabled: true, threshold: 32.5, thresholdText: '32.50', rearmText: '32.6625',
+    price: 32.4, priceText: '32.40'
+  });
+  assert.match(field('fxRule').textContent, /低於門檻 0.31%/);
+  assert.match(field('fxRuleNote').textContent, /下一次檢查會通知/);
+});
+
+test('今日已通知時說明不會再通知', async t => {
+  const {field} = await page(t, {
+    enabled: true, armed: false, threshold: 32.5, thresholdText: '32.50', rearmText: '32.6625',
+    price: 32.4, priceText: '32.40', notifiedToday: true
+  });
+  assert.match(field('fxRule').textContent, /今日不會再通知/);
+  assert.match(field('fxRuleNote').textContent, /需等明天/);
+});
+
+test('未儲存時顯示目前輸入的試算邊界', async t => {
+  const {window, field} = await page(t, {threshold: 32, thresholdText: '32.00', rearmText: '32.16'});
+  field('fxThreshold').value = '31';
+  field('fxThreshold').dispatchEvent(new window.Event('input'));
+  assert.equal(field('fxRuleDraft').hidden, false);
+  assert.match(field('fxRuleDraft').textContent, /報價 ≤ 31 通知；> 31.155 才重新武裝/);
+});
+
+test('讀取失敗時清空規則預覽並說明無法讀取', async t => {
+  const {field, api, poll} = await page(t);
+  api.failRead = true;
+  await poll();
+  assert.match(field('fxRule').textContent, /無法讀取設定/);
+  assert.match(field('fxRuleNote').textContent, /連線恢復後會自動更新/);
+  assert.equal(field('fxRuleDraft').hidden, true);
 });
 
 test('更換幣別清空門檻並停用提醒，必須先儲存', async t => {

@@ -114,6 +114,15 @@ String rateText(double value) {
   return String(value, exchange_rules::displayDecimals(value));
 }
 
+/** 邊界值顯示：最多 6 位小數並去掉尾零；比較仍用未四捨五入的原值。 */
+String boundaryText(double value) {
+  if (!std::isfinite(value) || value <= 0) return "—";
+  String text = String(value, 6);
+  while (text.indexOf('.') >= 0 && text.endsWith("0")) text.remove(text.length() - 1);
+  if (text.endsWith(".")) text.remove(text.length() - 1);
+  return text;
+}
+
 /** 將固定來源的 JSON 轉為報價；只接受 TWD 基準及可信的每日時間戳。 */
 bool decodeQuote(const String& body, Quote& result, String& error) {
   cJSON* json = cJSON_Parse(body.c_str());
@@ -210,6 +219,27 @@ String reportTime(uint32_t value) {
   char text[24];
   strftime(text, sizeof(text), "%Y/%m/%d %H:%M", &local);
   return text;
+}
+
+/** 下一個排程檢查時間；只供預覽，實際判斷仍由 serviceExchange() 執行。 */
+String nextCheckText(const Config& rule) {
+  if (!rule.timeCount) return "未設定";
+  if (!clockReady()) return "尚未校時";
+  const time_t now = time(nullptr);
+  tm local;
+  localtime_r(&now, &local);
+  const int minute = local.tm_hour * 60 + local.tm_min;
+  int next = -1;
+  int earliest = rule.minutes[0];
+  for (size_t i = 0; i < rule.timeCount; ++i) {
+    if (rule.minutes[i] > minute && (next < 0 || rule.minutes[i] < next)) next = rule.minutes[i];
+    if (rule.minutes[i] < earliest) earliest = rule.minutes[i];
+  }
+  const bool tomorrow = next < 0;
+  if (tomorrow) next = earliest;
+  char text[6];
+  snprintf(text, sizeof(text), "%02d:%02d", next / 60, next % 60);
+  return String(tomorrow ? "明天 " : "今天 ") + text;
 }
 
 /** 回報每一個所選目標的結果；刪除、停用或傳輸失敗都不改寄給其他人。 */
@@ -347,6 +377,10 @@ void getStatus(WebServer& server) {
   memcpy(message, statusMessage, sizeof(message));
   portEXIT_CRITICAL(&stateLock);
   const double price = priceFor(current, rule.currency);
+  const uint32_t now = static_cast<uint32_t>(time(nullptr));
+  const bool clock = clockReady();
+  const uint32_t today = (now + 8 * 3600) / 86400;
+  const double rearm = rule.threshold * (1.0 + rule.margin / 100.0);
   String times;
   for (size_t i = 0; i < rule.timeCount; ++i) {
     char item[8];
@@ -371,14 +405,19 @@ void getStatus(WebServer& server) {
   server.sendHeader("Cache-Control", "no-store");
   server.send(200, "application/json", String("{\"currency\":") + jsonText(rule.currency) +
     ",\"enabled\":" + (rule.enabled ? "true" : "false") + ",\"armed\":" + (rule.armed ? "true" : "false") +
-    ",\"threshold\":" + String(rule.threshold, 8) + ",\"margin\":" + String(rule.margin, 4) +
+    ",\"threshold\":" + String(rule.threshold, 8) +
+    ",\"thresholdText\":" + jsonText(rateText(rule.threshold)) + ",\"margin\":" + String(rule.margin, 4) +
+    ",\"rearmPrice\":" + String(rearm, 8) + ",\"rearmText\":" + jsonText(boundaryText(rearm)) +
     ",\"times\":" + jsonText(times) + ",\"targets\":" + targets + ",\"currencies\":" + currencies +
     ",\"price\":" + (price ? String(price, 8) : String("null")) +
     ",\"priceText\":" + (price ? jsonText(rateText(price)) : String("null")) +
     ",\"sourceTime\":" + String(current.sourceTime) + ",\"fetchedAt\":" + String(current.fetchedAt) +
     ",\"nextUpdate\":" + String(current.nextUpdate) +
-    ",\"fresh\":" + (price && exchange_rules::fresh(current.sourceTime, time(nullptr)) ? "true" : "false") +
-    ",\"clockReady\":" + (clockReady() ? "true" : "false") +
+    ",\"fresh\":" + (price && exchange_rules::fresh(current.sourceTime, now) ? "true" : "false") +
+    ",\"clockReady\":" + (clock ? "true" : "false") +
+    ",\"notifiedToday\":" + (clock && rule.lastNoticeDay == today ? "true" : "false") +
+    ",\"evaluated\":" + (price && rule.lastEvaluated >= current.sourceTime ? "true" : "false") +
+    ",\"nextCheck\":" + jsonText(nextCheckText(rule)) +
     ",\"targetsReady\":" + (targetsReady ? "true" : "false") +
     ",\"busy\":" + (sending ? "true" : "false") + ",\"message\":" + jsonText(message) + "}");
 }

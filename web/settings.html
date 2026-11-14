@@ -90,6 +90,13 @@ select:disabled, input:disabled { color: #94a3b8; background: #263244; cursor: n
 #exchange { scroll-margin-top: 20px; }
 #exchange a { color: #7dd3fc; }
 .fx-quote { font-size: clamp(20px, 3vw, 28px); line-height: 1.4; margin: 18px 0; }
+.fx-preview { margin: 14px 0; padding: 12px 14px; border: 1px solid #334155; border-radius: 8px; background: #0f172a; }
+.fx-preview h3 { font-size: 13px; font-weight: 600; margin: 0 0 8px; color: #94a3b8; }
+.fx-preview dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; margin: 0; font-size: 13px; }
+.fx-preview dt { color: #94a3b8; }
+.fx-preview dd { margin: 0; }
+.fx-preview p { margin: 8px 0 0; }
+.fx-draft { padding-top: 8px; border-top: 1px dashed #334155; color: #fbbf24; }
 .fx-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; }
 .fx-fields label, .fx-fields p { margin: 0; }
 .fx-full { grid-column: 1 / -1; }
@@ -104,6 +111,8 @@ select:disabled, input:disabled { color: #94a3b8; background: #263244; cursor: n
   .fx-actions { flex-direction: column; }
   .fx-actions button { width: 100%; }
   #exchange { padding: 16px; }
+  .fx-preview dl { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .fx-preview dd { margin-bottom: 6px; }
 }
 </style>
 </head>
@@ -154,6 +163,12 @@ select:disabled, input:disabled { color: #94a3b8; background: #263244; cursor: n
       <p><a href="https://www.exchangerate-api.com" target="_blank" rel="noopener noreferrer">Rates By Exchange Rate API</a></p>
       <p id="fxQuote" class="fx-quote">尚未取得報價</p>
       <p id="fxTime" class="muted"></p>
+      <div class="fx-preview">
+        <h3>套用中規則</h3>
+        <dl id="fxRule"><dt>目前報價</dt><dd>正在讀取匯率設定…</dd></dl>
+        <p id="fxRuleNote" class="muted"></p>
+        <p id="fxRuleDraft" class="fx-draft" hidden></p>
+      </div>
       <p id="fxStatus" class="status-box pending" role="status">正在讀取匯率設定…</p>
       <form id="fxForm" class="fx-fields">
         <label>買入幣別<select id="fxCurrency"><option value="USD">USD 美元</option></select></label>

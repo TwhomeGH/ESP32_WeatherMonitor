@@ -25,6 +25,7 @@
   function markDirty() {
     dirty = true;
     result('warning', '● 尚未儲存，裝置仍使用原有設定。');
+    renderRule();
     buttons();
   }
 
@@ -81,6 +82,79 @@
     return epoch ? new Date(epoch * 1000).toLocaleString('zh-TW', {timeZone: 'Asia/Taipei', hour12: false}) : '尚無資料';
   }
 
+  /** 讀取失敗時不保留上一個規則，避免誤以為仍套用。 */
+  function showUnavailable() {
+    const rows = field('fxRule');
+    rows.replaceChildren();
+    const term = document.createElement('dt');
+    term.textContent = '目前報價';
+    const detail = document.createElement('dd');
+    detail.textContent = '無法讀取設定';
+    rows.append(term, detail);
+    field('fxRuleNote').textContent = '連線恢復後會自動更新。';
+    field('fxRuleDraft').hidden = true;
+    field('fxRuleDraft').textContent = '';
+  }
+
+  /** 依裝置回傳的狀態顯示已套用規則；不在前端重算到價或武裝判斷。 */
+  function renderRule() {
+    if (!state) return;
+    const data = state;
+    const rows = field('fxRule');
+    rows.replaceChildren();
+    const add = (label, value) => {
+      const term = document.createElement('dt');
+      term.textContent = label;
+      const detail = document.createElement('dd');
+      detail.textContent = value;
+      rows.append(term, detail);
+    };
+    if (!data.threshold) {
+      add('觸發通知', '尚未設定門檻');
+    } else {
+      add('觸發通知', '報價 ≤ ' + data.thresholdText + ' TWD（等於也算）');
+      add('重新武裝', '報價 > ' + data.rearmText + ' TWD 後才可能再次通知');
+    }
+    if (data.price === null) {
+      add('目前報價', '尚未取得報價');
+    } else {
+      let relation = '';
+      if (data.threshold) {
+        const percent = (data.price / data.threshold - 1) * 100;
+        relation = '，' + (percent <= 0 ? '低於' : '高於') + '門檻 ' + Math.abs(percent).toFixed(2) + '%';
+      }
+      add('目前報價', data.priceText + ' TWD' + relation + '｜' + (data.armed ? '已武裝' : '未武裝'));
+    }
+    add('檢查時間', data.times ? data.times.replace(/,/g, '、') + '｜下一次：' + data.nextCheck : '未設定');
+    add('今日通知', data.notifiedToday ? '是；今日不會再通知' : '否');
+
+    let note;
+    if (!data.enabled) note = '提醒已停用；這些條件目前不會發送通知。';
+    else if (data.price === null || !data.fresh) note = '目前沒有有效報價，不會判斷。';
+    else if (data.notifiedToday) note = '今日已通知，需等明天後才會再通知。';
+    else if (!data.armed) note = '尚未武裝：報價需先超過 ' + data.rearmText + ' TWD。';
+    else if (data.threshold && data.price <= data.threshold) note = '已符合門檻；下一次檢查會通知。';
+    else if (data.evaluated) note = '這份報價已判斷過，需等來源更新後才會重新判斷。';
+    else note = '尚未到價；下一次檢查時再判斷。';
+    field('fxRuleNote').textContent = note;
+
+    // 未儲存的輸入只做客製試算；儲存後以裝置回傳的實際邊界為準。
+    const draft = field('fxRuleDraft');
+    const threshold = Number(field('fxThreshold').value);
+    const margin = Number(field('fxMargin').value);
+    if (!dirty) {
+      draft.hidden = true;
+      draft.textContent = '';
+    } else if (!(threshold > 0) || !Number.isFinite(margin) || margin < 0) {
+      draft.hidden = false;
+      draft.textContent = '若儲存目前輸入：請先填入正數門檻與非負的回升幅度。';
+    } else {
+      const rearm = String(Number((threshold * (1 + margin / 100)).toFixed(6)));
+      draft.hidden = false;
+      draft.textContent = '若儲存目前輸入：報價 ≤ ' + String(Number(threshold.toFixed(6))) + ' 通知；> ' + rearm + ' 才重新武裝。';
+    }
+  }
+
   /** 只更新狀態；有未儲存編輯時不覆蓋表單。 */
   async function refresh(reset = false) {
     const requestGeneration = generation;
@@ -106,10 +180,12 @@
       field('fxStatus').textContent = (data.enabled ? '提醒已啟用' : '提醒未啟用') +
         (!data.clockReady ? ' · 尚未校時' : '') + (!data.fresh ? ' · 無有效報價／資料已過期' : '') +
         (!data.targetsReady ? ' · 通知目標未設定、停用或已刪除' : '') + ' · ' + data.message;
+      renderRule();
     } catch (error) {
       loaded = false;
       field('fxStatus').className = 'status-box error';
       field('fxStatus').textContent = '無法讀取裝置匯率狀態；畫面可能為舊資料，稍後重試。';
+      showUnavailable();
     } finally {
       buttons();
     }
