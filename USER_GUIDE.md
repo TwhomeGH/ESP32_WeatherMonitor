@@ -159,6 +159,24 @@ node tools/flash.cjs
 
 產生的 `docs_assets.h` 已隨專案提供；未修改文件時可直接用 Arduino IDE 編譯。網頁閱讀器是唯讀，不會直接編輯板子上的文件。
 
+## 以 Wi-Fi 更新（OTA）
+
+裝置連上網路後會在 3232 埠開啟 ArduinoOTA（名稱 `esp32-monitor.local`），密碼沿用裝置管理密碼（每次開機會印在序列埠）。
+
+```sh
+node tools/flash.cjs --ota 192.168.0.195
+```
+
+工具會先編譯，重置一次以從序列埠讀取管理密碼，等裝置重新連線後再以 Wi-Fi 上傳。不想重置裝置時，可加上 `--password <管理密碼>`，直接用已知密碼上傳。
+
+限制：
+
+- 只更新 App；開機檔、分割表與 NVS（Wi-Fi、通知、匯率設定）不變。
+- 更新寫入另一個 app 槽；中途斷電不會覆蓋目前版本，重開機仍跑舊版。
+- 若第一次顯示 `No response from device`，重試一次即可（裝置可能剛重開、仍在初始化）。
+- 裝置必須與電腦在同一個網路；備援熱點（`ESP32-Setup-…`）模式無法 OTA。
+- 更換分割方案、或裝置已無法開機時，仍需 USB 燒錄；自動下載失效時請按住 BOOT。
+
 ## 資料來源與授權
 
 - [Open-Meteo 天氣服務](https://open-meteo.com/)

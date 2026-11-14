@@ -7,5 +7,8 @@ void setupAuth(const String& adminPassword);
 // 請求是否通過驗證：管理密碼（admin 參數）或有效且未過期的 Bearer 憑證。
 bool authIsAuthorized(WebServer& server);
 
+// 目前裝置的管理密碼；供 OTA 等本機服務沿用同一組驗證。
+const String& authAdminPassword();
+
 // 註冊驗證相關路由：POST /api/login、GET /api/admin、POST /api/logout。
 void registerAuthRoutes(WebServer& server);

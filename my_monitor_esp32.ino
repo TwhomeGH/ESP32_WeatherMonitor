@@ -11,6 +11,7 @@ WebServer server(80);
 #include "wifi_manager.h"
 #include "notify.h"
 #include "exchange.h"
+#include "ota.h"
 #include "docs_assets.h"
 
 
@@ -141,6 +142,7 @@ void loop() {
   serviceWiFiManager();
   serviceNotify();
   serviceExchange();
+  serviceOTA();
   server.handleClient();
   delay(10);
 }

@@ -90,6 +90,8 @@ bool authIsAuthorized(WebServer& server) {
   return validToken(bearer(server));
 }
 
+const String& authAdminPassword() { return admin; }
+
 void registerAuthRoutes(WebServer& server) {
   server.on("/api/login", HTTP_POST, [&server]() {
     server.sendHeader("Cache-Control", "no-store");

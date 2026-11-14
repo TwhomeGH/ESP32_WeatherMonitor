@@ -7,6 +7,8 @@
 //   node tools/flash.cjs --compile-only  只編譯，不上傳
 //   node tools/flash.cjs --port COM5     指定序列埠
 //   node tools/flash.cjs --fqbn esp32:esp32:esp32   指定開發板
+//   node tools/flash.cjs --ota 192.168.0.195        以 Wi-Fi OTA 更新（自動從序列埠讀取管理密碼）
+//   node tools/flash.cjs --ota 192.168.0.195 --password <管理密碼>  略過序列埠，直接 OTA
 //   node tools/flash.cjs -- --build-property=...    其後參數原樣傳給 arduino-cli
 //
 // 會自動使用 Arduino IDE 內建的 arduino-cli（不需另外安裝）；
@@ -14,6 +16,7 @@
 
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
+const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 
@@ -29,6 +32,8 @@ function printHelp() {
     '  --compile-only, --no-upload  只編譯，不上傳',
     '  --port, -p <port>            指定序列埠（預設自動偵測）',
     '  --fqbn <fqbn>                指定開發板（預設讀 sketch.yaml 的 default_fqbn）',
+    '  --ota <ip>                   以 Wi-Fi OTA 上傳；省略 --password 時從序列埠讀取管理密碼',
+    '  --password <p>               OTA 管理密碼（省略時自動讀取）',
     '  --help, -h                   顯示本說明',
   ].join('\n'));
 }
@@ -63,7 +68,7 @@ const configArgs = (resolved.bundled && fs.existsSync(path.join(os.homedir(), '.
   ? ['--config-file', path.join(os.homedir(), '.arduinoIDE', 'arduino-cli.yaml')] : [];
 
 // ---- 3. 解析參數 ----
-const opts = { port: null, fqbn: null, upload: true, passthrough: [] };
+const opts = { port: null, fqbn: null, upload: true, ota: null, password: null, passthrough: [] };
 const argv = process.argv.slice(2);
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
@@ -73,9 +78,14 @@ for (let i = 0; i < argv.length; i++) {
   else if (a.startsWith('--port=')) opts.port = a.slice('--port='.length);
   else if (a === '--fqbn') opts.fqbn = argv[++i];
   else if (a.startsWith('--fqbn=')) opts.fqbn = a.slice('--fqbn='.length);
+  else if (a === '--ota') opts.ota = argv[++i];
+  else if (a.startsWith('--ota=')) opts.ota = a.slice('--ota='.length);
+  else if (a === '--password') opts.password = argv[++i];
+  else if (a.startsWith('--password=')) opts.password = a.slice('--password='.length);
   else if (a === '--help' || a === '-h') { printHelp(); process.exit(0); }
   else fail('未知參數：' + a + '（--help 看用法）');
 }
+if (opts.ota) opts.upload = false;
 
 // ---- 4. 讀 sketch.yaml 預設值 ----
 function sketchDefaults() {
@@ -108,11 +118,14 @@ function detectPort() {
 }
 
 let port = opts.port || defaults.default_port;
-if (!port && opts.upload) {
+const needPort = opts.upload || (opts.ota && !opts.password);
+if (!port && needPort) {
   port = detectPort();
-  if (!port) fail('無法自動判斷序列埠（可能有多個裝置）。請用 --port <COM埠> 指定，或先關閉其他序列埠程式。');
+  if (!port && opts.upload) fail('無法自動判斷序列埠（可能有多個裝置）。請用 --port <COM埠> 指定，或先關閉其他序列埠程式。');
+  if (!port) fail('OTA 需要序列埠讀取管理密碼；請接上序列埠，或改用 --password 指定。');
 }
 if (opts.upload) info('開發板：' + fqbn + '，序列埠：' + port);
+else if (opts.ota) info('開發板：' + fqbn + '，OTA 目標：' + opts.ota + '（僅編譯，不經序列埠上傳）');
 else info('開發板：' + fqbn + '（僅編譯，不上傳）');
 
 // ---- 6. 編譯／上傳 ----
@@ -137,4 +150,82 @@ try {
     info('已更新 build/compile_commands.json（VS Code IntelliSense 用）。');
   }
 } catch (e) { info('略過 compile_commands.json 匯出：' + e.message); }
-process.exit(run.status === null ? 1 : run.status);
+
+if (run.status !== 0) process.exit(run.status === null ? 1 : run.status);
+if (opts.ota) {
+  otaUpload().then(code => process.exit(code));
+} else {
+  process.exit(0);
+}
+
+// ---- 7. OTA ----
+/** 從序列埠重置後讀取開機列印的管理密碼；只支援 Windows。 */
+function readAdminPassword(serialPort) {
+  if (process.platform !== 'win32') fail('自動讀取管理密碼目前僅支援 Windows；請以 --password 指定。');
+  info('從序列埠讀取管理密碼（裝置會重新開機一次）…');
+  const script = `
+$sp = New-Object System.IO.Ports.SerialPort '${serialPort}',115200
+$sp.ReadTimeout = 200
+try { $sp.Open() } catch { Write-Output ('OPEN_FAILED:' + $_.Exception.Message); exit 3 }
+$sp.DiscardInBuffer()
+$sp.DtrEnable = $false
+$sp.RtsEnable = $true
+Start-Sleep -Milliseconds 200
+$sp.RtsEnable = $false
+$buf = ''
+$deadline = (Get-Date).AddSeconds(12)
+while ((Get-Date) -lt $deadline) {
+  $buf += $sp.ReadExisting()
+  if ($buf -match '(?<![0-9a-f])([0-9a-f]{16})(?![0-9a-f])') { break }
+  Start-Sleep -Milliseconds 100
+}
+$sp.Close()
+if ($buf -match '(?<![0-9a-f])([0-9a-f]{16})(?![0-9a-f])') { Write-Output $matches[1] } else { exit 1 }
+`;
+  const res = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', script], { encoding: 'utf8' });
+  const out = String(res.stdout || '').trim();
+  if (out.startsWith('OPEN_FAILED:')) fail('序列埠被占用，無法讀取管理密碼（請關閉序列監控）：' + out.slice(12));
+  if (res.status !== 0 || !/^[0-9a-f]{16}$/.test(out)) fail('無法自動取得管理密碼；請以 --password 指定。');
+  return out;
+}
+
+/** 以 HTTP 檢查裝置是否已回到網路上。 */
+function waitForDevice(ip, timeoutMs) {
+  return new Promise(resolve => {
+    const deadline = Date.now() + timeoutMs;
+    const attempt = () => {
+      const req = http.get({ host: ip, port: 80, path: '/api/status', timeout: 2500 }, res => {
+        res.resume();
+        if (res.statusCode === 200) resolve(true);
+        else retry();
+      });
+      req.on('timeout', () => { req.destroy(); retry(); });
+      req.on('error', retry);
+      function retry() {
+        if (Date.now() >= deadline) resolve(false);
+        else setTimeout(attempt, 1000);
+      }
+    };
+    attempt();
+  });
+}
+
+/** 編譯後以 Wi-Fi 更新 App；開機與分割表不變。 */
+async function otaUpload() {
+  const password = opts.password || readAdminPassword(port);
+  info('等待裝置上線：' + opts.ota);
+  if (!(await waitForDevice(opts.ota, 45000))) {
+    info('裝置未在 45 秒內連上網路，OTA 中止。');
+    return 1;
+  }
+  info('以 Wi-Fi 上傳（OTA）…');
+  const upload = spawnSync(cli, [...configArgs, 'upload', '--fqbn', fqbn, '-p', opts.ota,
+    '--protocol', 'network', '--upload-field', 'password=' + password, '--build-path', buildPath],
+    { stdio: 'inherit' });
+  if (upload.error) { info('無法執行 arduino-cli：' + upload.error.message); return 1; }
+  if (upload.status !== 0) { info('OTA 上傳失敗；請確認裝置已連上同一個網路且密碼正確。'); return 1; }
+  info('OTA 已送出，等待裝置重新開機…');
+  await new Promise(resolve => setTimeout(resolve, 6000));
+  info((await waitForDevice(opts.ota, 60000)) ? 'OTA 完成，裝置已重新上線。' : 'OTA 已送出，但裝置尚未重新上線；請稍後確認。');
+  return 0;
+}

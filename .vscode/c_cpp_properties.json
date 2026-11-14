@@ -325,7 +325,10 @@
         "C:/Users/agp05/AppData/Local/Arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/Preferences/src",
         "C:/Users/agp05/AppData/Local/Arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/HTTPClient/src",
         "C:/Users/agp05/AppData/Local/Arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/NetworkClientSecure/src",
-        "C:/Users/agp05/AppData/Local/Arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/Hash/src"
+        "C:/Users/agp05/AppData/Local/Arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/ArduinoOTA/src",
+        "C:/Users/agp05/AppData/Local/Arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/Update/src",
+        "C:/Users/agp05/AppData/Local/Arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/Hash/src",
+        "C:/Users/agp05/AppData/Local/Arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/ESPmDNS/src"
       ],
       "cStandard": "gnu17",
       "cppStandard": "gnu++20",

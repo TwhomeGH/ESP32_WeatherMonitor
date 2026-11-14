@@ -1,5 +1,26 @@
 # ChangeHistory
 
+## 2026.11.15 03:02 新增 Wi-Fi OTA 熱更新
+
+**類型**: 功能 · **檔案**: `ota.cpp`
+
+### 修改 - 以管理密碼保護的無線更新
+
+- 連上網路後開啟 ArduinoOTA（3232、`esp32-monitor.local`），密碼沿用裝置管理密碼（`authAdminPassword()`）。
+- `tools/flash.cjs --ota <IP>`：編譯後從序列埠讀取管理密碼、等待裝置回線，再以 arduino-cli network 上傳；`--password` 可略過重置。
+- OTA 只寫入另一個 app 槽；開機檔、分割表與 NVS 不變，中途斷電保留舊版。
+- 使用說明、README 與 TODO 同步更新。
+
+### 驗證 - 建置與實機
+
+- 完整建置 1,255,895 bytes（61%）、全域變數 62,840 bytes（19%）。
+- 實機以 `--ota 192.168.0.195` 更新成功：序列埠顯示 OTA 開始／完成與 `rst:0xc (SW_CPU_RESET)`；裝置重新上線，NVS 設定（Wi-Fi、匯率）完整保留。
+- 首次嘗試曾回報 `No response from device`（裝置剛重開），重試即成功；使用說明已註明。
+
+**相關文件**: [使用說明](../USER_GUIDE.md)
+
+---
+
 ## 2026.11.15 02:08 新增匯率規則預覽與未儲存試算
 
 **類型**: 功能 · **檔案**: `exchange.cpp`

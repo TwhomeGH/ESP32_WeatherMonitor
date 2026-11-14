@@ -17,10 +17,12 @@
 - [x] **已完成**：天氣抓取（`weather`）＋天氣通知排程（`notify`：每 N 小時／每天／每週）＋手動發送；設定頁「天氣播報通知」卡片。
 - [ ] **待實作**：期貨開/收盤排程（`market_calendar`）、「跟隨期貨」觸發、每種排程多組、補送／重試策略、到期契約（見 FUTURES_PLAN）。
 
-## OTA 熱更新（選配）
+## OTA 熱更新（已加入）
 
-- 分割區已保留雙 app 槽（`PartitionScheme=no_fs`），隨時可加入 `ArduinoOTA`。
-- [ ] 需在 `.ino` 加 `ArduinoOTA.begin()`（setup）與 `ArduinoOTA.handle()`（loop），並決定 OTA 密碼來源（可沿用裝置管理密碼）。
+- 分割區已保留雙 app 槽（`PartitionScheme=no_fs`），已接入 `ArduinoOTA`。
+- [x] `ota.cpp` 於連網後開啟 3232 埠，密碼沿用裝置管理密碼（`authAdminPassword()`）。
+- [x] `tools/flash.cjs --ota <IP>`：編譯後從序列埠讀取密碼並以 Wi-Fi 上傳；`--password` 可略過重置。
+- [ ] 待辦：網頁顯示 OTA 狀態與版本（選配）。
 - 注意：OTA 需要雙槽，與 `huge_app`（單槽）互斥；維持 `no_fs` 即可。
 
 ## 裝置管理密碼 / 登入
