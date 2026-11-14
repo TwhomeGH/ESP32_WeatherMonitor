@@ -323,8 +323,8 @@
         "C:/Users/agp05/AppData/Local/Arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/WebServer/src",
         "C:/Users/agp05/AppData/Local/Arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/FS/src",
         "C:/Users/agp05/AppData/Local/Arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/Preferences/src",
-        "C:/Users/agp05/AppData/Local/Arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/NetworkClientSecure/src",
         "C:/Users/agp05/AppData/Local/Arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/HTTPClient/src",
+        "C:/Users/agp05/AppData/Local/Arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/NetworkClientSecure/src",
         "C:/Users/agp05/AppData/Local/Arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/Hash/src"
       ],
       "cStandard": "gnu17",

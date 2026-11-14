@@ -5,6 +5,7 @@
 ## 功能
 
 - **儀表板**：晶片、記憶體、Flash、執行時間等狀態，約每 2 秒更新。
+- **匯率觀察**：設定頁提供 USD/TWD 等支援幣別的每日參考匯率（1 外幣 = X TWD）、指定到價提醒及所選 ntfy 目標；不是銀行成交價。
 - **網路天氣**：Open-Meteo，顯示溫度、濕度、風速與風向（每 10 分鐘更新）。
 - **設定頁** `/settings`：集中管理 Wi-Fi 與共用天氣地區。
 - **說明頁** `/docs`：內建使用說明，離線（無網際網路）也可閱讀。
@@ -34,7 +35,7 @@
 - 使用說明：`USER_GUIDE.md`
 - 通知系統設計（期貨 + 天氣）：`NOTIFY_PLAN.md`
 - 期貨提醒規劃：`FUTURES_PLAN.md`
-- 匯率與生活成本觀察規劃（尚未實作）：[ECONOMY_PLAN.md](ECONOMY_PLAN.md)
+- 匯率與生活成本觀察規劃（匯率第一版已加入）：[ECONOMY_PLAN.md](ECONOMY_PLAN.md)
 - 待辦與規劃：`TODO.md`
 - 更新紀錄：[Docs/ChangeHistory.md](Docs/ChangeHistory.md)（專案根目錄執行 `changelogkit` 開啟通用歷史管理工具）
 

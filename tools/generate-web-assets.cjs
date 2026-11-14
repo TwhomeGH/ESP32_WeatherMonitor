@@ -50,6 +50,7 @@ const assets = {
   DOC_PAGE: fs.readFileSync(path.join(root, 'web', 'docs.html'), 'utf8'),
   DOC_SCRIPT: fs.readFileSync(path.join(root, 'web', 'docs.js'), 'utf8'),
   WEATHER_SCRIPT: fs.readFileSync(path.join(root, 'web', 'weather.js'), 'utf8'),
+  EXCHANGE_SCRIPT: fs.readFileSync(path.join(root, 'web', 'exchange.js'), 'utf8'),
   SETTINGS_PAGE: fs.readFileSync(path.join(root, 'web', 'settings.html'), 'utf8'),
   SETTINGS_SCRIPT: fs.readFileSync(path.join(root, 'web', 'settings.js'), 'utf8')
 };

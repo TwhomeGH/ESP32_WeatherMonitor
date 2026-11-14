@@ -139,7 +139,7 @@ html { color-scheme: dark; }
 <header>
   <div>
     <h1>ESP32 Monitor</h1>
-    <div class="subtitle">Hardware Dashboard v1.1 · <a href="/docs" style="color:#7dd3fc">使用說明</a> · <a href="/settings" style="color:#7dd3fc">設定</a></div>
+    <div class="subtitle">Hardware Dashboard v1.1 · <a href="/settings#exchange" style="color:#7dd3fc">匯率觀察</a> · <a href="/docs" style="color:#7dd3fc">使用說明</a> · <a href="/settings" style="color:#7dd3fc">設定</a></div>
   </div>
   <div id="status" class="status">Connecting</div>
 </header>

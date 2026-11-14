@@ -152,6 +152,28 @@ bool ntfyPublish(const String& title, const String& message, const String& tags,
   return sent && !failed;
 }
 
+bool ntfyTargetEnabled(uint32_t id) {
+  const Settings data = snapshot();
+  for (const Target& target : data.targets) {
+    if (id && target.id == id) return target.enabled;
+  }
+  return false;
+}
+
+bool ntfyPublishTo(uint32_t id, const String& title, const String& message, const String& tags, int& httpCode) {
+  if (!acquirePublish()) { httpCode = -1000; return false; }
+  const Settings data = snapshot();
+  httpCode = -1002;
+  for (const Target& target : data.targets) {
+    if (id && target.id == id && target.enabled) {
+      httpCode = publishWith(target.config, title, message, tags);
+      break;
+    }
+  }
+  releasePublish();
+  return httpCode >= 200 && httpCode < 300;
+}
+
 void setupNtfyTest(WebServer& server) {
   ready = prefs.begin("monitor-ntfy", false);
   if (ready && prefs.isKey("targets-v1")) {

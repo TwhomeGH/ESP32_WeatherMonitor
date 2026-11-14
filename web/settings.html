@@ -85,6 +85,26 @@ select:disabled, input:disabled { color: #94a3b8; background: #263244; cursor: n
   .grid { grid-template-columns: 1fr; }
   .wide { grid-column: auto; }
 }
+/* 卡片保留主容器寬度；窄螢幕不讓長狀態或欄位撐出橫向捲動。 */
+.card { min-width: 0; overflow-wrap: anywhere; }
+#exchange { scroll-margin-top: 20px; }
+#exchange a { color: #7dd3fc; }
+.fx-quote { font-size: clamp(20px, 3vw, 28px); line-height: 1.4; margin: 18px 0; }
+.fx-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; }
+.fx-fields label, .fx-fields p { margin: 0; }
+.fx-full { grid-column: 1 / -1; }
+.fx-fields input, .fx-fields select { min-width: 0; }
+.fx-fields fieldset { min-width: 0; margin: 0; padding: 12px 14px; border: 1px solid #334155; border-radius: 8px; }
+#fxTargets { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+#fxTargets label { display: flex; align-items: center; gap: 8px; }
+.fx-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.fx-actions button { margin-top: 0; min-height: 44px; }
+@media (max-width: 540px) {
+  .fx-fields { grid-template-columns: minmax(0, 1fr); }
+  .fx-actions { flex-direction: column; }
+  .fx-actions button { width: 100%; }
+  #exchange { padding: 16px; }
+}
 </style>
 </head>
 <body>
@@ -128,6 +148,33 @@ select:disabled, input:disabled { color: #94a3b8; background: #263244; cursor: n
     <p id="ntfyResult" role="status"></p>
     <p class="muted">最多 8 組；多支手機也可訂閱同一主題。停用目標仍可手動測試。測試只使用所選目標的已儲存設定；不會自動傳送或重試。看到「ntfy 已接受」後，仍需確認手機是否顯示通知。</p>
   </div>
+<div class="card wide" id="exchange">
+      <h2>匯率觀察 · 用 TWD 買外幣</h2>
+      <p class="muted">公開參考匯率，每日更新；不是銀行現金／即期賣出價，不含手續費或優惠。</p>
+      <p><a href="https://www.exchangerate-api.com" target="_blank" rel="noopener noreferrer">Rates By Exchange Rate API</a></p>
+      <p id="fxQuote" class="fx-quote">尚未取得報價</p>
+      <p id="fxTime" class="muted"></p>
+      <p id="fxStatus" class="status-box pending" role="status">正在讀取匯率設定…</p>
+      <form id="fxForm" class="fx-fields">
+        <label>買入幣別<select id="fxCurrency"><option value="USD">USD 美元</option></select></label>
+        <p class="muted fx-full">1 單位外幣 = X TWD，數值越低表示所需台幣越少。顯示至 2 位小數；低於 1 的幣別自動保留更多位數。更換幣別後先儲存，門檻會清空且提醒停用。</p>
+        <label>到價門檻（TWD／1 單位外幣）<input id="fxThreshold" type="number" min="0" max="1000000" step="any" placeholder="例如：依自己的目標填入"></label>
+        <label>重新提醒所需的回升幅度（%）<input id="fxMargin" type="number" min="0" max="100" step="any" value="0.5" required></label>
+        <label class="fx-full">每日檢查時間（台灣時間，最多 6 個）<input id="fxTimes" value="09:30" placeholder="09:30,12:30,15:30" required maxlength="35"></label>
+        <p class="muted fx-full">每個時間使用 HH:MM，以英文逗號分隔。只檢查當下時段，不補送錯過的排程；重複報價不重複提醒。</p>
+        <fieldset class="fx-full"><legend>通知接收目標（不預設群發）</legend><div id="fxTargets">讀取 ntfy 目標中…</div></fieldset>
+        <label class="fx-full"><input id="fxEnabled" type="checkbox" style="width:auto"> 啟用到價提醒</label>
+        <p class="muted fx-full">低於或等於門檻時提醒一次；持續符合不重發。回升超過設定幅度後才重新啟用提醒，每日最多一次。調整規則不會立即重送同一份報價。</p>
+        <div class="fx-actions fx-full">
+        <button id="fxSave" type="submit" disabled>儲存匯率設定</button>
+        <button id="fxRefresh" type="button" disabled>立即更新（不通知）</button>
+        <button id="fxTest" type="button" disabled>發送測試匯率通知</button>
+        </div>
+      </form>
+      <p id="fxResult" class="status-box pending" role="status" aria-live="polite">尚未操作</p>
+      <p class="muted">更新使用有效快取；來源最多每小時請求一次。測試使用已儲存設定，不需要開啟提醒，且不會重設到價紀錄。</p>
+    </div>
+
   <div class="card wide">
     <h2>天氣播報通知</h2>
     <p class="muted">由 ESP32 抓取「天氣地區」的天氣，依排程透過 ntfy 發送（發送至上方所有已啟用的目標）。</p>
@@ -216,5 +263,6 @@ select:disabled, input:disabled { color: #94a3b8; background: #263244; cursor: n
 </main>
 
 <script src="/assets/settings.js"></script>
+<script src="/assets/exchange.js"></script>
 </body>
 </html>

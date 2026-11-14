@@ -10,6 +10,7 @@ WebServer server(80);
 #include "monitor_page.h"
 #include "wifi_manager.h"
 #include "notify.h"
+#include "exchange.h"
 #include "docs_assets.h"
 
 
@@ -87,6 +88,7 @@ void setup() {
 
     setupWiFiManager(server);
     setupNotify(server);
+    setupExchange(server);
 
     // WebServer 初始化
     server.on("/", HTTP_GET, []() {
@@ -124,6 +126,11 @@ void setup() {
     server.on("/assets/weather.js", HTTP_GET, []() { server.sendHeader("Cache-Control", "no-store"); sendGzip("application/javascript; charset=utf-8", WEATHER_SCRIPT, WEATHER_SCRIPT_LEN); });
     server.on("/assets/settings.js", HTTP_GET, []() { server.sendHeader("Cache-Control", "no-store"); sendGzip("application/javascript; charset=utf-8", SETTINGS_SCRIPT, SETTINGS_SCRIPT_LEN); });
 
+    server.on("/assets/exchange.js", HTTP_GET, []() {
+      server.sendHeader("Cache-Control", "no-store");
+      sendGzip("application/javascript; charset=utf-8", EXCHANGE_SCRIPT, EXCHANGE_SCRIPT_LEN);
+    });
+
     server.begin();
 
     Serial.println("ESP32 Monitor Ready! IP:");
@@ -133,6 +140,7 @@ void setup() {
 void loop() {
   serviceWiFiManager();
   serviceNotify();
+  serviceExchange();
   server.handleClient();
   delay(10);
 }

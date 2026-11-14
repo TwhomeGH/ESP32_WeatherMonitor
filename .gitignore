@@ -14,3 +14,7 @@ node_modules/
 
 # Magic Context tooling
 .cortexkit/
+
+# Browser layout verification artifacts
+.playwright-cli/
+output/playwright/
