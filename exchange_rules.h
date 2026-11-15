@@ -3,9 +3,9 @@
 #include <cstdint>
 
 namespace exchange_rules {
-/** 判斷來源時間是否可信且仍在有效期內；每日資料最多容許 48 小時。 */
+/** 判斷來源時間是否可信且仍在有效期內；銀行牌告最多容許 30 分鐘。 */
 inline bool fresh(uint32_t sourceTime, uint32_t now) {
-  return sourceTime > 1735689600U && sourceTime <= now && now - sourceTime <= 172800U;
+  return sourceTime > 1735689600U && sourceTime <= now && now - sourceTime <= 1800U;
 }
 
 /** TWD 基準回傳「每台幣可換外幣」，介面需其倒數「每外幣需要台幣」。 */
@@ -26,13 +26,13 @@ inline bool recovered(double price, double threshold, double marginPercent) {
 
 /**
  * 顯示用的小數位數；到價比較一律使用原值，不經過這裡。
- * 每單位外幣價格 1 以上固定 2 位；1 以下保留 4 位有效數字，
- * 避免日圓、韓元等低價幣別被壓成 0.21、0.02；最多 6 位。
+ * 至少 4 位小數；低於 1 的價格自動增加位數，讓有效數字維持 4 位，最多 6 位。
+ * 例如 32.9340、0.2130、0.02346、0.001235。
  */
 inline int displayDecimals(double value) {
-  if (!std::isfinite(value) || value <= 0 || value >= 1) return 2;
-  const int decimals = 3 - static_cast<int>(std::floor(std::log10(value)));
-  return decimals > 6 ? 6 : decimals;
+  if (!std::isfinite(value) || value <= 0) return 4;
+  const int significant = 3 - static_cast<int>(std::floor(std::log10(value)));
+  return significant < 4 ? 4 : (significant > 6 ? 6 : significant);
 }
 
 struct Decision {

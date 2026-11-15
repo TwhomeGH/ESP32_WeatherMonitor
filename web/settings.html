@@ -159,8 +159,8 @@ select:disabled, input:disabled { color: #94a3b8; background: #263244; cursor: n
   </div>
 <div class="card wide" id="exchange">
       <h2>匯率觀察 · 用 TWD 買外幣</h2>
-      <p class="muted">公開參考匯率，每日更新；不是銀行現金／即期賣出價，不含手續費或優惠。</p>
-      <p><a href="https://www.exchangerate-api.com" target="_blank" rel="noopener noreferrer">Rates By Exchange Rate API</a></p>
+      <p class="muted">台新銀行牌告匯率；正常每 15 分鐘查詢，銀行更新頻率不保證。優惠及成交價以交易畫面為準。</p>
+      <p><a href="https://www.taishinbank.com.tw/TSB/personal/deposit/lookup/realtime/index.html" target="_blank" rel="noopener noreferrer">台新銀行匯率查詢</a></p>
       <p id="fxQuote" class="fx-quote">尚未取得報價</p>
       <p id="fxTime" class="muted"></p>
       <div class="fx-preview">
@@ -171,12 +171,12 @@ select:disabled, input:disabled { color: #94a3b8; background: #263244; cursor: n
       </div>
       <p id="fxStatus" class="status-box pending" role="status">正在讀取匯率設定…</p>
       <form id="fxForm" class="fx-fields">
+        <label>匯率種類<select id="fxKind"><option value="spot">即期賣出（帳戶換匯）</option><option value="cash">現鈔賣出（買現鈔）</option></select></label>
         <label>買入幣別<select id="fxCurrency"><option value="USD">USD 美元</option></select></label>
-        <p class="muted fx-full">1 單位外幣 = X TWD，數值越低表示所需台幣越少。顯示至 2 位小數；低於 1 的幣別自動保留更多位數。更換幣別後先儲存，門檻會清空且提醒停用。</p>
+        <p class="muted fx-full">1 單位外幣 = X TWD，數值越低表示所需台幣越少。保留銀行牌告精度。更換幣別或價別後先儲存，門檻會清空且提醒停用。</p>
         <label>到價門檻（TWD／1 單位外幣）<input id="fxThreshold" type="number" min="0" max="1000000" step="any" placeholder="例如：依自己的目標填入"></label>
         <label>重新提醒所需的回升幅度（%）<input id="fxMargin" type="number" min="0" max="100" step="any" value="0.5" required></label>
-        <label class="fx-full">每日檢查時間（台灣時間，最多 6 個）<input id="fxTimes" value="09:30" placeholder="09:30,12:30,15:30" required maxlength="35"></label>
-        <p class="muted fx-full">每個時間使用 HH:MM，以英文逗號分隔。只檢查當下時段，不補送錯過的排程；重複報價不重複提醒。</p>
+        <p class="muted fx-full">取得新報價後自動判斷到價。連續失敗改為 30／60／120／240 分鐘重試；伺服器要求更久時依其期限等待，另加最多 60 秒隨機延遲。</p>
         <fieldset class="fx-full"><legend>通知接收目標（不預設群發）</legend><div id="fxTargets">讀取 ntfy 目標中…</div></fieldset>
         <label class="fx-full"><input id="fxEnabled" type="checkbox" style="width:auto"> 啟用到價提醒</label>
         <p class="muted fx-full">低於或等於門檻時提醒一次；持續符合不重發。回升超過設定幅度後才重新啟用提醒，每日最多一次。調整規則不會立即重送同一份報價。</p>
@@ -187,7 +187,7 @@ select:disabled, input:disabled { color: #94a3b8; background: #263244; cursor: n
         </div>
       </form>
       <p id="fxResult" class="status-box pending" role="status" aria-live="polite">尚未操作</p>
-      <p class="muted">更新使用有效快取；來源最多每小時請求一次。測試使用已儲存設定，不需要開啟提醒，且不會重設到價紀錄。</p>
+      <p class="muted">更新使用有效快取；手動更新亦遵守冷卻與退避；過期報價不觸發通知。測試使用已儲存設定，不需要開啟提醒，且不會重設到價紀錄。</p>
     </div>
 
   <div class="card wide">
@@ -248,7 +248,7 @@ select:disabled, input:disabled { color: #94a3b8; background: #263244; cursor: n
     <h2>天氣地區</h2>
     <p id="locationCurrent" class="muted">正在讀取共用地區…</p>
     <form id="weatherLabelForm">
-      <label>ntfy 天氣通知的地名顯示<select id="weatherNameMode">
+      <label>天氣地名顯示（首頁標題與 ntfy）<select id="weatherNameMode">
         <option value="0">完整地名（新北市土城區）</option>
         <option value="1">只報縣市（新北市）</option>
         <option value="2">只報鄉鎮區（土城區）</option>
@@ -258,7 +258,7 @@ select:disabled, input:disabled { color: #94a3b8; background: #263244; cursor: n
     </form>
     <p id="weatherLabelCurrent" class="muted" role="status">正在確認裝置目前使用的地名設定…</p>
     <p id="weatherLabelResult" class="status-box pending" role="status" aria-live="polite">讀取設定中，尚未確認生效狀態。</p>
-    <p class="muted">括號內是範例。僅調整 ntfy 地名；網頁保留完整地名。查詢座標不變，也不代表全市平均天氣。無法辨識縣市的地名會保留原名。</p>
+    <p class="muted">括號內是範例。調整首頁天氣卡標題與 ntfy 地名；首頁會在標題下方另外標示完整查詢位置。查詢座標不變，也不代表全市平均天氣。無法辨識縣市的地名會保留原名。</p>
     <form id="locationSearchForm">
       <label>搜尋範圍 <select id="locationCountry"><option value="TW">台灣</option><option value="">全球</option></select></label>
       <label>搜尋地名<input id="locationQuery" required minlength="2" placeholder="例如：土城、台北、Tokyo"></label>

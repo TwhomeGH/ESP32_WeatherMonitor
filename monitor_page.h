@@ -23,7 +23,7 @@ body {
 }
 
 main {
-  max-width: 900px;
+  max-width: 1480px;
   margin: auto;
 }
 
@@ -52,11 +52,13 @@ h2 { font-size: 15px; margin: 0 0 12px; }
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
 }
 
 .card {
+  min-width: 0;
+  overflow-wrap: anywhere;
   background: #172033;
   border: 1px solid #293548;
   border-radius: 14px;
@@ -90,13 +92,24 @@ h2 { font-size: 15px; margin: 0 0 12px; }
   transition: width .4s;
 }
 
-.wide {
-  grid-column: 1 / -1;
+.wide { grid-column: span 2; }
+.system-card { grid-column: 1 / -1; }
+.summary-state { padding: 10px 12px; border-left: 3px solid #38bdf8; background: #0b1120; border-radius: 6px; }
+.summary-state.warning { color: #fbbf24; border-color: #fbbf24; }
+.summary-state.error { color: #fca5a5; border-color: #f87171; }
+.summary-state.ok { color: #6ee7b7; border-color: #34d399; }
+a { color: #7dd3fc; }
+@media (max-width: 1050px) {
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .overview { grid-column: 1 / -1; }
+}
+@media (min-width: 1051px) {
+  .system-card .details { grid-template-columns: repeat(3, minmax(0, 1fr) minmax(0, 1fr)); }
 }
 
 .details {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
   font-size: 14px;
 }
@@ -114,7 +127,9 @@ footer {
 @media(max-width: 540px) {
   body { padding: 14px; }
   .grid { grid-template-columns: 1fr; }
-  .wide { grid-column: auto; }
+  .wide, .system-card, .overview { grid-column: auto; }
+  header { gap: 12px; align-items: flex-start; }
+  .card { padding: 16px; }
   .value { font-size: 25px; }
 }
 html { color-scheme: dark; }
@@ -145,19 +160,7 @@ html { color-scheme: dark; }
 </header>
 
 <section class="grid">
-  <div class="card wide">
-    <h2>Wi-Fi 狀態</h2>
-    <p id="wifiState" class="muted">正在讀取連線狀態…</p>
-    <p id="wifiRecovery" class="muted"></p>
-    <a class="btn" href="/settings">變更 Wi-Fi／天氣地區設定 →</a>
-  </div>
-  <div class="card wide">
-    <h2>自動排程</h2>
-    <p id="scheduleWeather" class="muted">讀取中…</p>
-    <p id="scheduleFutures" class="muted">期貨開／收盤提醒：尚未啟用（規劃中）。</p>
-    <a href="/settings" style="color:#7dd3fc">設定排程 →</a>
-  </div>
-  <div class="card wide">
+  <div class="card wide overview">
     <h2 id="weatherTitle">網路天氣</h2>
     <div class="value" id="weatherSummary">讀取中…</div>
     <p class="muted" id="weatherStatus" role="status">正在取得天氣資料</p>
@@ -168,8 +171,37 @@ html { color-scheme: dark; }
       <span>風向（來向）</span><strong id="windDirection">--</strong>
       <span>資料時間（台灣）</span><strong id="weatherTime">--</strong>
     </div>
+    <p class="muted" id="weatherPlace" hidden></p>
     <p class="muted">每 10 分鐘更新 · 所選地區模式估計，非現場感測器實測。開啟此頁的裝置需要可連上網際網路 · <a href="/settings" style="color:#7dd3fc">更換地區</a></p>
     <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" style="color:#7dd3fc">天氣資料：Open-Meteo</a>
+  </div>
+
+  <div class="card wide overview" id="exchangeSummary">
+    <h2>匯率觀察 · <span id="homeFxKind">台新牌告</span></h2>
+    <div class="value" id="homeFxPrice">讀取中…</div>
+    <p class="summary-state" id="homeFxStatus" role="status">正在讀取匯率摘要</p>
+    <div class="details">
+      <span>到價門檻</span><strong id="homeFxThreshold">--</strong>
+      <span>距離目標</span><strong id="homeFxDistance">--</strong>
+      <span>來源時間（台灣）</span><strong id="homeFxTime">--</strong>
+      <span>下次查詢</span><strong id="homeFxNext">--</strong>
+    </div>
+    <p class="muted" id="homeFxNote">牌告參考；優惠及成交價以銀行交易畫面為準。</p>
+    <a href="/settings#exchange">設定匯率與通知 →</a>
+  </div>
+
+  <div class="card wide">
+    <h2>Wi-Fi 狀態</h2>
+    <p id="wifiState" class="muted">正在讀取連線狀態…</p>
+    <p id="wifiRecovery" class="muted"></p>
+    <a class="btn" href="/settings">變更 Wi-Fi／天氣地區設定 →</a>
+  </div>
+  <div class="card wide">
+    <h2>自動排程</h2>
+    <p id="scheduleWeather" class="muted">讀取中…</p>
+    <p id="scheduleExchange" class="muted">匯率觀察：讀取中…</p>
+    <p id="scheduleFutures" class="muted">期貨開／收盤提醒：尚未啟用（規劃中）。</p>
+    <a href="/settings" style="color:#7dd3fc">設定排程 →</a>
   </div>
 
   <div class="card">
@@ -191,18 +223,6 @@ html { color-scheme: dark; }
     <div class="muted" id="largest">--</div>
   </div>
 
-  <div class="card wide">
-    <h2>Heap Memory</h2>
-    <div class="value">
-      <span id="usage">--</span>
-      <span class="unit">%</span>
-    </div>
-    <div class="bar">
-      <div id="bar" class="fill"></div>
-    </div>
-    <p class="muted" id="heapDetail">--</p>
-  </div>
-
   <div class="card">
     <h2>Flash 實體總容量</h2>
     <div class="value">
@@ -217,6 +237,18 @@ html { color-scheme: dark; }
   </div>
 
   <div class="card wide">
+    <h2>Heap Memory</h2>
+    <div class="value">
+      <span id="usage">--</span>
+      <span class="unit">%</span>
+    </div>
+    <div class="bar">
+      <div id="bar" class="fill"></div>
+    </div>
+    <p class="muted" id="heapDetail">--</p>
+  </div>
+
+  <div class="card wide">
     <h2>程式儲存空間</h2>
     <div class="value"><span id="storageUsage">--</span><span class="unit"> %</span></div>
     <div class="bar"><div id="storageBar" class="fill"></div></div>
@@ -224,7 +256,7 @@ html { color-scheme: dark; }
     <p class="muted">已用量為目前韌體大小；剩餘量僅指目前程式分區，不代表可儲存檔案的空間。Flash 另含系統、更新或資料分區。</p>
   </div>
 
-  <div class="card wide">
+  <div class="card wide system-card">
     <h2>System Information</h2>
     <div class="details">
       <span>Chip</span><strong id="chip">--</strong>
@@ -238,12 +270,59 @@ html { color-scheme: dark; }
 </section>
 
 <footer>
-  每 2 秒更新 · <span id="lastUpdate">尚未取得監控資料</span>
+  裝置狀態每 2 秒、匯率摘要每 15 秒更新（不會額外向銀行取價） · <span id="lastUpdate">尚未取得監控資料</span>
 </footer>
 </main>
 
 <script>
 const el = id => document.getElementById(id);
+/** 首頁只讀取裝置快取，不修改設定、不觸發下載或通知。 */
+async function refreshExchangeSummary() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  const date = value => value ? new Date(value * 1000).toLocaleString('zh-TW', {timeZone: 'Asia/Taipei', hour12: false}) : '尚無資料';
+  try {
+    const response = await fetch('/api/exchange', {cache: 'no-store', signal: controller.signal});
+    if (!response.ok) throw Error('exchange unavailable');
+    const data = await response.json();
+    const validPrice = Number.isFinite(data.price) && data.price > 0;
+    el('homeFxKind').textContent = data.kind === 'cash' ? '台新現鈔賣出' : '台新即期賣出';
+    el('homeFxPrice').textContent = validPrice ? '1 ' + data.currency + ' = ' + (data.priceText ?? data.price) + ' TWD' : '尚未取得報價';
+    el('homeFxThreshold').textContent = data.threshold > 0 ? '≤ ' + data.thresholdText + ' TWD' : '尚未設定';
+    const difference = validPrice && data.threshold > 0 ? (data.price / data.threshold - 1) * 100 : null;
+    el('homeFxDistance').textContent = difference === null ? '—' : !data.fresh ? '報價已過期，暫不比較' :
+      difference === 0 ? '等於門檻' : (difference > 0 ? '高於' : '低於') + '門檻 ' + Math.abs(difference).toFixed(2) + '%';
+    el('homeFxTime').textContent = date(data.sourceTime);
+    el('homeFxNext').textContent = date(data.nextUpdate);
+    el('scheduleExchange').textContent = '匯率：' + (data.enabled ? '到價提醒已啟用' : '僅觀察，提醒未啟用') +
+      (data.retryIn > 0 ? (data.failures || !validPrice ? ' · 等待重試，約 ' : ' · 約 ') +
+        Math.ceil(data.retryIn / 60) + ' 分鐘後查詢' : ' · 尚未排定查詢') +
+      ' · 下次查詢：' + date(data.nextUpdate) + '。取得新報價後判斷到價，非固定時間通知。';
+    const notes = [!validPrice ? '尚無報價' : !data.fresh ? '報價已過期' : '報價有效', data.enabled ? '提醒已啟用' : '提醒未啟用'];
+    if (data.restored) notes.push('上次開機資料');
+    if (data.retryIn > 0 && !validPrice) notes.push('等待冷卻 ' + Math.ceil(data.retryIn / 60) + ' 分');
+    if (data.busy) notes.push('正在查詢');
+    if (data.failures) notes.push('連續失敗 ' + data.failures + ' 次，等待重試');
+    if (data.enabled && !data.targetsReady) notes.push('通知目標不可用');
+    if (data.notifiedToday) notes.push('今日已通知');
+    el('homeFxStatus').textContent = notes.join(' · ');
+    el('homeFxStatus').className = 'summary-state ' + (!validPrice || !data.fresh || data.failures || !data.enabled || !data.targetsReady ? 'warning' : 'ok');
+    el('homeFxNote').textContent = (data.failures && data.lastError ? data.lastError + '。' : '') +
+      (data.restored ? '顯示上次開機的報價，尚未重新查詢。' : '') + '牌告參考；優惠及成交價以銀行交易畫面為準。';
+  } catch (error) {
+    el('scheduleExchange').textContent = '匯率：無法取得查詢與提醒狀態。';
+    el('homeFxPrice').textContent = '匯率摘要暫時無法讀取';
+    ['homeFxThreshold', 'homeFxDistance', 'homeFxTime', 'homeFxNext'].forEach(id => el(id).textContent = '—');
+    el('homeFxStatus').className = 'summary-state error';
+    el('homeFxStatus').textContent = '無法連線，稍後自動重試';
+    el('homeFxNote').textContent = '請至設定頁確認裝置匯率狀態。';
+  } finally {
+    clearTimeout(timeout);
+    setTimeout(refreshExchangeSummary, 15000);
+  }
+}
+refreshExchangeSummary();
+
 async function refreshWiFi() {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);

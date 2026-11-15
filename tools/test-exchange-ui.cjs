@@ -7,6 +7,34 @@ const {JSDOM} = require('jsdom');
 const root = path.resolve(__dirname, '..');
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
+test('退避期間禁止手動更新，顯示原因與剩餘時間', async t => {
+  const {field, api} = await page(t, {failures: 3, retryIn: 7200, lastError: 'HTTP 503'});
+  assert.equal(field('fxRefresh').disabled, true);
+  assert.match(field('fxRule').textContent, /連續失敗 3 次；HTTP 503/);
+  assert.match(field('fxRule').textContent, /剩餘約 120 分鐘/);
+  field('fxRefresh').click();
+  await tick();
+  assert.equal(api.calls.length, 0);
+});
+
+test('更換即期為現鈔先清空門檻、停用，並提交價別', async t => {
+  const {window, field, api, submit} = await page(t, {threshold: 32.5, enabled: true});
+  field('fxKind').value = 'cash';
+  field('fxKind').dispatchEvent(new window.Event('change'));
+  assert.equal(field('fxThreshold').value, '');
+  assert.equal(field('fxEnabled').checked, false);
+  await submit();
+  assert.equal(api.calls[0].body.kind, 'cash');
+  assert.equal(api.state.threshold, 0);
+  assert.equal(api.state.enabled, false);
+});
+
+test('已判斷的低價報價不承諾下一次再次通知', async t => {
+  const {field} = await page(t, {enabled: true, threshold: 33, price: 32, evaluated: true});
+  assert.match(field('fxRuleNote').textContent, /這份報價已判斷過/);
+  assert.doesNotMatch(field('fxRuleNote').textContent, /下一次檢查會通知/);
+});
+
 /** 每個案例建立獨立設定頁與伺服器狀態，載入真正的匯率 UI 程式。 */
 async function page(t, overrides = {}) {
   const dom = new JSDOM(fs.readFileSync(path.join(root, 'web/settings.html'), 'utf8'), {
@@ -22,7 +50,7 @@ async function page(t, overrides = {}) {
       currencies: ['USD', 'EUR', 'JPY'], price: 32, priceText: '32',
       sourceTime: 1800000000, fetchedAt: 1800000100, nextUpdate: 1800086400,
       fresh: true, clockReady: true, targetsReady: true, notifiedToday: false, evaluated: false,
-      nextCheck: '今天 09:30', busy: false, message: '待命', ...overrides
+      nextCheck: '今天 09:30', restored: false, busy: false, message: '待命', ...overrides
     }
   };
   const polls = [];
@@ -33,9 +61,9 @@ async function page(t, overrides = {}) {
       api.calls.push({url, body});
       if (api.reject) return {ok: false, status: 500, text: async () => '儲存失敗'};
       if (url === '/api/exchange') {
-        const changed = body.currency !== api.state.currency;
+        const changed = body.currency !== api.state.currency || body.kind !== (api.state.kind || 'spot');
         Object.assign(api.state, {
-          currency: body.currency, enabled: !changed && body.enabled === 'true',
+          currency: body.currency, kind: body.kind, enabled: !changed && body.enabled === 'true',
           threshold: changed ? 0 : Number(body.threshold), times: body.times,
           targets: body.targets ? body.targets.split(',').map(Number) : [],
           margin: Number(body.margin)
@@ -91,7 +119,7 @@ test('規則預覽顯示觸發、重新武裝與目前差距', async t => {
   assert.match(rule, /報價 ≤ 32.50 TWD（等於也算）/);
   assert.match(rule, /報價 > 32.6625 TWD 後才可能再次通知/);
   assert.match(rule, /32.92 TWD，高於門檻 1.30%｜已武裝/);
-  assert.match(rule, /09:30｜下一次：今天 09:30/);
+  assert.match(rule, /下一次查詢：今天 09:30/);
   assert.match(field('fxRuleNote').textContent, /這份報價已判斷過/);
   assert.equal(field('fxRuleDraft').hidden, true);
 });
@@ -129,6 +157,11 @@ test('讀取失敗時清空規則預覽並說明無法讀取', async t => {
   assert.match(field('fxRule').textContent, /無法讀取設定/);
   assert.match(field('fxRuleNote').textContent, /連線恢復後會自動更新/);
   assert.equal(field('fxRuleDraft').hidden, true);
+});
+
+test('顯示上次開機資料時標示來源', async t => {
+  const {field} = await page(t, {restored: true, price: 32.934, priceText: '32.93'});
+  assert.match(field('fxStatus').textContent, /顯示上次開機資料/);
 });
 
 test('更換幣別清空門檻並停用提醒，必須先儲存', async t => {

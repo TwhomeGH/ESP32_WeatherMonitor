@@ -27,22 +27,23 @@ int main() {
   assert(recovered(32.2, 32, 0.5));
   std::cout << "PASS: rearm only after recovery margin\n";
 
-  assert(displayDecimals(32.9218107) == 2);
-  assert(displayDecimals(1) == 2);
-  assert(displayDecimals(999.999) == 2);
+  assert(displayDecimals(32.9218107) == 4);
+  assert(displayDecimals(1) == 4);
+  assert(displayDecimals(999.999) == 4);
   assert(displayDecimals(0.9999) == 4);
   assert(displayDecimals(0.2130123) == 4);
   assert(displayDecimals(0.0234567) == 5);
+  assert(displayDecimals(0.0012345) == 6);
   assert(displayDecimals(0.0001) == 6);
-  assert(displayDecimals(0) == 2);
-  assert(displayDecimals(-1) == 2);
-  assert(displayDecimals(std::numeric_limits<double>::quiet_NaN()) == 2);
+  assert(displayDecimals(0) == 4);
+  assert(displayDecimals(-1) == 4);
+  assert(displayDecimals(std::numeric_limits<double>::quiet_NaN()) == 4);
   std::cout << "PASS: display decimals keep small currencies readable\n";
 
   const uint32_t now = 1800000000U;
-  assert(fresh(now - 86400, now));
-  assert(fresh(now - 172800, now));
-  assert(!fresh(now - 172801, now));
+  assert(fresh(now - 900, now));
+  assert(fresh(now - 1800, now));
+  assert(!fresh(now - 1801, now));
   assert(!fresh(now + 1, now));
   assert(!fresh(0, now));
   std::cout << "PASS: stale and future quotes rejected\n";

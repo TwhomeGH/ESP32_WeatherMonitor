@@ -28,6 +28,15 @@ function weatherText(code) {
 
 function applyLocation(next) {
   if (!validLocation(next)) throw Error('Invalid location');
+  // displayName 由裝置依「地名顯示」策略產生；空字串代表略過地名。
+  const label = typeof next.displayName === 'string' ? next.displayName.trim() : next.name;
+  el('weatherTitle').textContent = (label ? label + ' · ' : '') + '網路天氣';
+  const place = document.getElementById('weatherPlace');
+  if (place) {
+    place.textContent = label === next.name ? '' : '查詢位置：' + next.name;
+    place.hidden = label === next.name;
+  }
+  // 只改顯示策略時不重抓天氣；座標變更才重新載入。
   if (weatherLocation && next.name === weatherLocation.name &&
       next.latitude === weatherLocation.latitude && next.longitude === weatherLocation.longitude) return;
   weatherLocation = next;
@@ -35,7 +44,6 @@ function applyLocation(next) {
   if (weatherController) weatherController.abort();
   clearTimeout(weatherTimer);
   hasWeather = false;
-  el('weatherTitle').textContent = next.name + ' · 網路天氣';
   el('weatherSummary').textContent = '讀取中…';
   el('weatherStatus').textContent = '正在取得所選地區的天氣';
   ['temperature','humidity','windSpeed','windDirection','weatherTime'].forEach(id => el(id).textContent = '--');

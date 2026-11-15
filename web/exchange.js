@@ -1,4 +1,4 @@
-/** 匯率設定控制器；共用設定頁登入，所有通知操作需明確按鈕或已儲存排程。 */
+/** 匯率設定控制器；共用設定頁登入，通知需明確測試或已啟用的到價規則。 */
 (() => {
   const field = id => document.getElementById(id);
   let loaded = false;
@@ -18,7 +18,7 @@
   function buttons() {
     const locked = !loaded || saving || state?.busy;
     field('fxSave').disabled = locked;
-    field('fxRefresh').disabled = locked || !state?.clockReady;
+    field('fxRefresh').disabled = locked || !state?.clockReady || state?.retryIn > 0;
     field('fxTest').disabled = locked || dirty || !state?.clockReady || !state?.targetsReady || !state?.fresh;
   }
 
@@ -29,16 +29,18 @@
     buttons();
   }
 
-  field('fxCurrency').addEventListener('change', () => {
-    currencyChanged = field('fxCurrency').value !== state?.currency;
+  function changeQuoteKind() {
+    currencyChanged = field('fxCurrency').value !== state?.currency || field('fxKind').value !== (state?.kind || 'spot');
     field('fxThreshold').value = '';
     field('fxEnabled').checked = false;
     field('fxEnabled').disabled = currencyChanged;
     field('fxThreshold').disabled = currencyChanged;
     markDirty();
-    if (currencyChanged) result('warning', '● 幣別已改選，請先儲存；原門檻不沿用，新幣別報價載入後再設定門檻。');
-  });
-  ['fxThreshold', 'fxMargin', 'fxTimes', 'fxEnabled'].forEach(id => {
+    if (currencyChanged) result('warning', '● 幣別／價別已改選，請先儲存；原門檻不沿用，新幣別報價載入後再設定門檻。');
+  }
+  field('fxCurrency').addEventListener('change', changeQuoteKind);
+  field('fxKind').addEventListener('change', changeQuoteKind);
+  ['fxThreshold', 'fxMargin', 'fxEnabled'].forEach(id => {
     field(id).addEventListener('input', markDirty);
   });
 
@@ -49,7 +51,7 @@
     field('fxCurrency').value = data.currency;
     field('fxThreshold').value = data.threshold || '';
     field('fxMargin').value = data.margin;
-    field('fxTimes').value = data.times;
+    field('fxKind').value = data.kind || 'spot';
     field('fxEnabled').checked = data.enabled;
     field('fxEnabled').disabled = false;
     field('fxThreshold').disabled = false;
@@ -125,7 +127,15 @@
       }
       add('目前報價', data.priceText + ' TWD' + relation + '｜' + (data.armed ? '已武裝' : '未武裝'));
     }
-    add('檢查時間', data.times ? data.times.replace(/,/g, '、') + '｜下一次：' + data.nextCheck : '未設定');
+    add('報價種類', data.kind === 'cash' ? '台新現鈔賣出' : '台新即期賣出');
+    add('自動檢查', '新報價到達時判斷｜下一次查詢：' + data.nextCheck);
+    if (data.lastPhase) add('上次查詢階段', data.lastPhase);
+    if (data.resetReason !== undefined) {
+      const reasons = {1: '電源啟動', 3: '軟體重啟', 4: '程式異常', 5: '中斷看門狗', 6: '工作看門狗', 7: '其他看門狗', 9: '供電不足'};
+      add('本次開機原因', reasons[data.resetReason] || '代碼 ' + data.resetReason);
+    }
+    add('查詢狀態', data.failures ? '連續失敗 ' + data.failures + ' 次；' + data.lastError : '正常');
+    if (data.retryIn > 0) add('冷卻／退避', '剩餘約 ' + Math.ceil(data.retryIn / 60) + ' 分鐘，手動更新亦需等待');
     add('今日通知', data.notifiedToday ? '是；今日不會再通知' : '否');
 
     let note;
@@ -133,8 +143,8 @@
     else if (data.price === null || !data.fresh) note = '目前沒有有效報價，不會判斷。';
     else if (data.notifiedToday) note = '今日已通知，需等明天後才會再通知。';
     else if (!data.armed) note = '尚未武裝：報價需先超過 ' + data.rearmText + ' TWD。';
-    else if (data.threshold && data.price <= data.threshold) note = '已符合門檻；下一次檢查會通知。';
     else if (data.evaluated) note = '這份報價已判斷過，需等來源更新後才會重新判斷。';
+    else if (data.threshold && data.price <= data.threshold) note = '已符合門檻；下一次檢查會通知。';
     else note = '尚未到價；下一次檢查時再判斷。';
     field('fxRuleNote').textContent = note;
 
@@ -175,11 +185,13 @@
       field('fxQuote').textContent = data.price === null ? '尚未取得 ' + data.currency + ' 報價' :
         '1 ' + data.currency + ' = ' + shown + ' TWD';
       field('fxTime').textContent = '來源時間：' + dateText(data.sourceTime) + ' · 裝置取得：' + dateText(data.fetchedAt) +
-        ' · 來源預計更新：' + dateText(data.nextUpdate);
-      field('fxStatus').className = 'status-box ' + (data.busy ? 'pending' : !data.fresh || !data.enabled ? 'warning' : 'ok');
+        ' · 裝置下次查詢：' + dateText(data.nextUpdate);
+      field('fxStatus').className = 'status-box ' + (data.busy ? 'pending' : !data.fresh || !data.enabled || data.failures ? 'warning' : 'ok');
       field('fxStatus').textContent = (data.enabled ? '提醒已啟用' : '提醒未啟用') +
         (!data.clockReady ? ' · 尚未校時' : '') + (!data.fresh ? ' · 無有效報價／資料已過期' : '') +
-        (!data.targetsReady ? ' · 通知目標未設定、停用或已刪除' : '') + ' · ' + data.message;
+        (!data.targetsReady ? ' · 通知目標未設定、停用或已刪除' : '') +
+        (data.retryIn > 0 && (data.failures || !data.price) ? ' · 冷卻中約 ' + Math.ceil(data.retryIn / 60) + ' 分' : '') +
+        (data.restored ? ' · 顯示上次開機資料' : '') + ' · ' + data.message;
       renderRule();
     } catch (error) {
       loaded = false;
@@ -196,7 +208,7 @@
       currency: field('fxCurrency').value,
       threshold: field('fxThreshold').value || '0',
       margin: field('fxMargin').value,
-      times: field('fxTimes').value.replace(/\s/g, ''),
+      kind: field('fxKind').value,
       targets: [...field('fxTargets').querySelectorAll('input:checked:not(:disabled)')].map(input => input.value).join(','),
       enabled: String(field('fxEnabled').checked && !currencyChanged)
     };
