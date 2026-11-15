@@ -34,6 +34,7 @@ function printHelp() {
     '  --fqbn <fqbn>                指定開發板（預設讀 sketch.yaml 的 default_fqbn）',
     '  --ota <ip>                   以 Wi-Fi OTA 上傳；省略 --password 時從序列埠讀取管理密碼',
     '  --password <p>               OTA 管理密碼（省略時自動讀取）',
+    '  --verbose                    終端顯示完整編譯輸出（預設摘要，完整記錄仍會保存）',
     '  --help, -h                   顯示本說明',
   ].join('\n'));
 }
@@ -68,7 +69,7 @@ const configArgs = (resolved.bundled && fs.existsSync(path.join(os.homedir(), '.
   ? ['--config-file', path.join(os.homedir(), '.arduinoIDE', 'arduino-cli.yaml')] : [];
 
 // ---- 3. 解析參數 ----
-const opts = { port: null, fqbn: null, upload: true, ota: null, password: null, passthrough: [] };
+const opts = { port: null, fqbn: null, upload: true, ota: null, password: null, verbose: false, passthrough: [] };
 const argv = process.argv.slice(2);
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
@@ -82,6 +83,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (a.startsWith('--ota=')) opts.ota = a.slice('--ota='.length);
   else if (a === '--password') opts.password = argv[++i];
   else if (a.startsWith('--password=')) opts.password = a.slice('--password='.length);
+  else if (a === '--verbose') opts.verbose = true;
   else if (a === '--help' || a === '-h') { printHelp(); process.exit(0); }
   else fail('未知參數：' + a + '（--help 看用法）');
 }
@@ -125,7 +127,7 @@ if (!port && needPort) {
   if (!port) fail('OTA 需要序列埠讀取管理密碼；請接上序列埠，或改用 --password 指定。');
 }
 if (opts.upload) info('開發板：' + fqbn + '，序列埠：' + port);
-else if (opts.ota) info('開發板：' + fqbn + '，OTA 目標：' + opts.ota + '（僅編譯，不經序列埠上傳）');
+else if (opts.ota) info('開發板：' + fqbn + '，OTA 目標：' + opts.ota + '（先編譯，成功後透過 Wi-Fi 上傳）');
 else info('開發板：' + fqbn + '（僅編譯，不上傳）');
 
 // ---- 6. 編譯／上傳 ----
@@ -134,29 +136,33 @@ else info('開發板：' + fqbn + '（僅編譯，不上傳）');
 // 專案 build/，供 VS Code IntelliSense 使用（build/ 已列於 .gitignore）。
 const buildPath = path.join(os.homedir(), '.arduino-build', path.basename(root));
 fs.mkdirSync(buildPath, { recursive: true });
-const args = [...configArgs, 'compile', '--fqbn', fqbn, '--build-path', buildPath];
+const args = [...configArgs, 'compile', '--verbose', '--fqbn', fqbn, '--build-path', buildPath];
 if (opts.upload) args.push('-p', port, '--upload');
 args.push(...opts.passthrough, root);
 
-info((opts.upload ? '編譯並上傳' : '編譯') + '中…');
-const run = spawnSync(cli, args, { stdio: 'inherit' });
-if (run.error) fail('無法執行 arduino-cli：' + run.error.message);
-// 匯出 IntelliSense 用的編譯命令（讓 VS Code 找到 WebServer.h 等標頭）。
-try {
-  const commands = path.join(buildPath, 'compile_commands.json');
-  if (fs.existsSync(commands)) {
-    fs.mkdirSync(path.join(root, 'build'), { recursive: true });
-    require('./export-compile-commands.cjs').exportCommands(commands, root);
-    info('已更新 build/compile_commands.json（VS Code IntelliSense 用）。');
-  }
-} catch (e) { info('略過 compile_commands.json 匯出：' + e.message); }
-
-if (run.status !== 0) process.exit(run.status === null ? 1 : run.status);
-if (opts.ota) {
-  otaUpload().then(code => process.exit(code));
-} else {
-  process.exit(0);
+/** 完成編譯與索引匯出後才進入 OTA；失敗時保留記錄並停止。 */
+async function buildAndUpload() {
+  info((opts.upload ? '編譯並上傳' : '編譯') + '中…（每 10 秒回報，Ctrl+C 可中止）');
+  const logPath = path.join(buildPath, 'compile-' + new Date().toISOString().replace(/[:.]/g, '-') + '.log');
+  const status = await require('./compile-progress.cjs').runCompile(cli, args, {
+    logPath, verbose: opts.verbose, info
+  });
+  try {
+    const commands = path.join(buildPath, 'compile_commands.json');
+    if (fs.existsSync(commands)) {
+      fs.mkdirSync(path.join(root, 'build'), {recursive: true});
+      require('./export-compile-commands.cjs').exportCommands(commands, root);
+      info('已更新 build/compile_commands.json（VS Code IntelliSense 用）。');
+    }
+  } catch (e) { info('略過 compile_commands.json 匯出：' + e.message); }
+  if (status !== 0) return status;
+  return opts.ota ? otaUpload() : 0;
 }
+
+buildAndUpload().then(code => { process.exitCode = code; }).catch(error => {
+  info('建置流程失敗：' + error.message);
+  process.exitCode = 1;
+});
 
 // ---- 7. OTA ----
 /** 從序列埠重置後讀取開機列印的管理密碼；只支援 Windows。 */
